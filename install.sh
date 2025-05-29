@@ -8,6 +8,7 @@
 #   - https://github.com/qwer-search
 # Version: 2.4.8.sh (macOS - sed delimiter, panel URL opening with https default) - Modified by User Request
 # English Translation & Firewall Modification (Ports 22, 80 only) - by AI Assistant for User
+# Further refined configure_firewall for debugging iptables - v2
 
 display_welcome_message() {
     clear
@@ -32,7 +33,7 @@ COLOR_CYAN='\033[0;36m'
 COLOR_RESET='\033[0m' # No Color
 
 # Initialize SCRIPT_VERSION (example, can be dynamic if needed)
-SCRIPT_VERSION="2.4.8-EN-FWMod1"
+SCRIPT_VERSION="2.4.8-EN-FWMod2"
 
 display_welcome_message # Call the welcome message function
 
@@ -102,7 +103,6 @@ configure_firewall() {
     echo -e "\n${COLOR_YELLOW}--- Firewall Configuration: Allowing Ports 22 (SSH) and 80 (HTTP) ---${COLOR_RESET}"
     echo -e "${COLOR_CYAN}This script will attempt to configure your firewall (UFW, firewalld, or iptables) to allow incoming traffic on TCP ports 22 and 80.${COLOR_RESET}"
     echo -e "${COLOR_CYAN}All other incoming ports will be blocked by default, while outgoing traffic will generally be allowed.${COLOR_RESET}"
-    echo -e "${COLOR_CYAN}This is a security best practice for most servers.${COLOR_RESET}"
     
     local confirmation=""
     while [[ "$confirmation" != "yes" && "$confirmation" != "no" ]]; do
@@ -116,10 +116,12 @@ configure_firewall() {
     fi
 
     echo -e "\n${COLOR_YELLOW}--- Attempting to configure firewall for ports 22 and 80 ---${COLOR_RESET}"
-    firewall_action_taken=false
+    local firewall_action_taken=false
+    local processed_firewall_tool_name="" # To store which tool was used: ufw, firewalld, iptables
 
+    # Try UFW first
     if command -v ufw &>/dev/null; then
-        echo -e "${COLOR_CYAN}UFW detected...${COLOR_RESET}"
+        echo -e "${COLOR_CYAN}UFW detected. Attempting configuration...${COLOR_RESET}"
         echo -e "${COLOR_CYAN}Setting UFW default policies: deny incoming, allow outgoing.${COLOR_RESET}"
         sudo ufw default deny incoming
         sudo ufw default allow outgoing
@@ -128,99 +130,177 @@ configure_firewall() {
         echo -e "${COLOR_CYAN}Allowing TCP port 80 (HTTP)...${COLOR_RESET}"
         sudo ufw allow 80/tcp comment 'HTTP access'
         
+        local ufw_enabled_successfully=false
         if sudo ufw status | grep -qw active; then
             echo -e "${COLOR_YELLOW}UFW is active, reloading rules...${COLOR_RESET}"
             if sudo ufw reload; then
-                echo -e "${COLOR_GREEN}UFW rules reloaded successfully. Ports 22 and 80 are now open.${COLOR_RESET}"
-                firewall_action_taken=true
+                echo -e "${COLOR_GREEN}UFW rules reloaded successfully.${COLOR_RESET}"
+                ufw_enabled_successfully=true
             else
                 echo -e "${COLOR_RED}Failed to reload UFW rules. Please check UFW status and logs manually.${COLOR_RESET}"
             fi
         else
             echo -e "${COLOR_YELLOW}UFW is not active, enabling it now with the new rules...${COLOR_RESET}"
-            # The 'yes |' part is to automatically answer 'y' to the UFW enable prompt.
             if yes | sudo ufw enable; then 
-                echo -e "${COLOR_GREEN}UFW enabled successfully. Ports 22 and 80 are now open.${COLOR_RESET}"
-                firewall_action_taken=true
+                echo -e "${COLOR_GREEN}UFW enabled successfully.${COLOR_RESET}"
+                ufw_enabled_successfully=true
             else
                 echo -e "${COLOR_RED}Failed to enable UFW. Please check UFW status and logs manually.${COLOR_RESET}"
             fi
         fi
+        
+        if $ufw_enabled_successfully; then
+            firewall_action_taken=true
+            processed_firewall_tool_name="ufw"
+            echo -e "${COLOR_GREEN}UFW is now active and configured for ports 22 and 80.${COLOR_RESET}"
+        else
+            echo -e "${COLOR_YELLOW}UFW configuration attempted, but UFW might not be active or fully set up.${COLOR_RESET}"
+        fi
     fi
 
-    if command -v firewall-cmd &>/dev/null; then
-        echo -e "${COLOR_CYAN}firewalld detected...${COLOR_RESET}"
+    # Try firewalld if UFW was not successfully processed
+    if [ -z "$processed_firewall_tool_name" ] && command -v firewall-cmd &>/dev/null; then
+        echo -e "${COLOR_CYAN}firewalld detected. Attempting configuration...${COLOR_RESET}"
+        local firewalld_configured_successfully=false
         if ! systemctl is-active --quiet firewalld; then
             echo -e "${COLOR_YELLOW}firewalld is not active. Attempting to start and enable...${COLOR_RESET}"
             if sudo systemctl start firewalld && sudo systemctl enable firewalld; then
                 echo -e "${COLOR_GREEN}firewalld started and enabled successfully.${COLOR_RESET}"
             else
                 echo -e "${COLOR_RED}Failed to start or enable firewalld. Please check system logs.${COLOR_RESET}"
-                # If firewalld cannot be started, we shouldn't proceed with its rules
-                echo -e "${COLOR_YELLOW}Skipping firewalld rule configuration due to activation failure.${COLOR_RESET}"
-                return 0 # Continue to iptables if available
             fi
         fi
         
-        # Ensure firewalld is active before trying to add rules
         if systemctl is-active --quiet firewalld; then
-            echo -e "${COLOR_CYAN}Configuring firewalld to allow SSH (port 22) and HTTP (port 80) services/ports...${COLOR_RESET}"
-            # It's good practice to remove default services if they are not needed, e.g., cockpit
-            # sudo firewall-cmd --permanent --remove-service=cockpit >/dev/null 2>&1
-            # sudo firewall-cmd --permanent --remove-service=dhcpv6-client >/dev/null 2>&1
-            
-            sudo firewall-cmd --permanent --add-service=ssh
-            sudo firewall-cmd --permanent --add-port=80/tcp
+            echo -e "${COLOR_CYAN}Configuring firewalld to allow SSH (port 22) and HTTP (port 80)...${COLOR_RESET}"
+            sudo firewall-cmd --permanent --add-service=ssh >/dev/null 2>&1 || echo -e "${COLOR_YELLOW}Warning: Failed to add ssh service to firewalld or already added.${COLOR_RESET}"
+            sudo firewall-cmd --permanent --add-port=80/tcp >/dev/null 2>&1 || echo -e "${COLOR_YELLOW}Warning: Failed to add port 80/tcp to firewalld or already added.${COLOR_RESET}"
             echo -e "${COLOR_CYAN}Reloading firewalld rules...${COLOR_RESET}"
             if sudo firewall-cmd --reload; then
                 echo -e "${COLOR_GREEN}firewalld rules reloaded. SSH and HTTP (port 80) access is now configured.${COLOR_RESET}"
-                firewall_action_taken=true
+                firewalld_configured_successfully=true
             else
                 echo -e "${COLOR_RED}Failed to reload firewalld. Please check 'journalctl -xe' or 'systemctl status firewalld'.${COLOR_RESET}"
             fi
         else
             echo -e "${COLOR_YELLOW}firewalld is not active. Skipping firewalld rule configuration.${COLOR_RESET}"
         fi
+
+        if $firewalld_configured_successfully; then
+            firewall_action_taken=true
+            processed_firewall_tool_name="firewalld"
+        fi
     fi
 
-    if command -v iptables &>/dev/null; then
-        echo -e "${COLOR_CYAN}iptables detected... Configuring rules for ports 22 (SSH) and 80 (HTTP)...${COLOR_RESET}"
-        # Flush all existing rules and delete non-default chains
-        sudo iptables -F INPUT
-        sudo iptables -F FORWARD
-        sudo iptables -F OUTPUT
-        sudo iptables -F
-        sudo iptables -X 
-        # Set default policies: DROP incoming/forwarding, ACCEPT outgoing
-        sudo iptables -P INPUT DROP
-        sudo iptables -P FORWARD DROP
-        sudo iptables -P OUTPUT ACCEPT
+    # Try iptables if no other tool was successfully processed, or if explicitly desired.
+    if [ -z "$processed_firewall_tool_name" ] && command -v iptables &>/dev/null; then
+        echo -e "${COLOR_CYAN}iptables detected. No other primary firewall tool (UFW/firewalld) was fully configured by this script.${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}Configuring iptables rules for ports 22 (SSH) and 80 (HTTP) step-by-step...${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}If script hangs, note the last successful 'Done.' message to identify the problematic command.${COLOR_RESET}"
+        
+        local iptables_step_ok=true
+
+        echo -n "Step 1: Flushing INPUT chain... "
+        sudo iptables -F INPUT || iptables_step_ok=false
+        if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
+
+        if $iptables_step_ok; then
+            echo -n "Step 2: Flushing FORWARD chain... "
+            sudo iptables -F FORWARD || iptables_step_ok=false
+            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
+        fi
+
+        if $iptables_step_ok; then
+            echo -n "Step 3: Flushing OUTPUT chain... "
+            sudo iptables -F OUTPUT || iptables_step_ok=false
+            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
+        fi
+        
+        if $iptables_step_ok; then
+            echo -n "Step 4: Flushing all non-default chains (general -F)... "
+            sudo iptables -F || iptables_step_ok=false
+            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
+        fi
+
+        if $iptables_step_ok; then
+            echo -n "Step 5: Deleting all non-default chains (-X)... "
+            sudo iptables -X || iptables_step_ok=false # This can fail if chains are still in use (shouldn't be after -F)
+            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed (possibly no custom chains to delete or a chain is in use).${COLOR_RESET}"; iptables_step_ok=true; fi # Non-critical if it fails harmlessly
+        fi
+
+        # Set default policies
+        if $iptables_step_ok; then
+            echo -n "Step 6: Setting INPUT policy to DROP... "
+            sudo iptables -P INPUT DROP || iptables_step_ok=false
+            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
+        fi
+        
+        if $iptables_step_ok; then
+            echo -n "Step 7: Setting FORWARD policy to DROP... "
+            sudo iptables -P FORWARD DROP || iptables_step_ok=false
+            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
+        fi
+
+        if $iptables_step_ok; then
+            echo -n "Step 8: Setting OUTPUT policy to ACCEPT... "
+            sudo iptables -P OUTPUT ACCEPT || iptables_step_ok=false
+            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
+        fi
+
         # Allow loopback traffic
-        sudo iptables -A INPUT -i lo -j ACCEPT
+        if $iptables_step_ok; then
+            echo -n "Step 9: Allowing loopback INPUT... "
+            sudo iptables -A INPUT -i lo -j ACCEPT || iptables_step_ok=false
+            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
+        fi
+
         # Allow established and related connections
-        sudo iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+        if $iptables_step_ok; then
+            echo -n "Step 10: Allowing RELATED,ESTABLISHED INPUT... "
+            sudo iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables_step_ok=false
+            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
+        fi
+
         # Allow SSH on port 22
-        sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+        if $iptables_step_ok; then
+            echo -n "Step 11: Allowing TCP port 22 (SSH) INPUT... "
+            sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT || iptables_step_ok=false
+            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
+        fi
+
         # Allow HTTP on port 80
-        sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-        echo -e "${COLOR_GREEN}iptables: Default policies set to DROP (input/forward), ACCEPT (output). Rules added for ports 22 & 80.${COLOR_RESET}"
-        echo -e "${COLOR_YELLOW}Note: These iptables changes might be lost on reboot unless you use 'iptables-persistent' (Debian/Ubuntu) or 'iptables-services' (CentOS/RHEL) to save them.${COLOR_RESET}"
-        echo -e "${COLOR_YELLOW}For Debian/Ubuntu: 'sudo apt install iptables-persistent' then 'sudo netfilter-persistent save'.${COLOR_RESET}"
-        echo -e "${COLOR_YELLOW}For CentOS/RHEL: 'sudo yum install iptables-services', 'sudo systemctl enable iptables', 'sudo systemctl start iptables', then 'sudo iptables-save > /etc/sysconfig/iptables'.${COLOR_RESET}"
-        firewall_action_taken=true
+        if $iptables_step_ok; then
+            echo -n "Step 12: Allowing TCP port 80 (HTTP) INPUT... "
+            sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT || iptables_step_ok=false
+            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
+        fi
+
+        if $iptables_step_ok; then
+            echo -e "${COLOR_GREEN}iptables: Default policies set and rules added for ports 22 & 80.${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}Note: These iptables changes might be lost on reboot unless you use 'iptables-persistent' (Debian/Ubuntu) or 'iptables-services' (CentOS/RHEL) to save them.${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}For Debian/Ubuntu: 'sudo apt install iptables-persistent' then 'sudo netfilter-persistent save'.${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}For CentOS/RHEL: 'sudo yum install iptables-services', 'sudo systemctl enable iptables', 'sudo systemctl start iptables', then 'sudo iptables-save > /etc/sysconfig/iptables'.${COLOR_RESET}"
+            firewall_action_taken=true
+            processed_firewall_tool_name="iptables"
+        else
+            echo -e "${COLOR_RED}One or more iptables commands failed. Firewall may not be configured correctly.${COLOR_RESET}"
+        fi
+    elif command -v iptables &>/dev/null && [ -n "$processed_firewall_tool_name" ]; then
+        echo -e "${COLOR_CYAN}iptables detected, but ${processed_firewall_tool_name} was already configured. Skipping direct iptables commands.${COLOR_RESET}"
+        echo -e "${COLOR_CYAN}${processed_firewall_tool_name} usually manages iptables rules. Manual iptables changes might conflict or be overwritten.${COLOR_RESET}"
     fi
 
-    if ! $firewall_action_taken && ! command -v ufw &>/dev/null && ! command -v firewall-cmd &>/dev/null && ! command -v iptables &>/dev/null ; then
+    # Final status messages
+    if [ -n "$processed_firewall_tool_name" ] && $firewall_action_taken; then
+        echo -e "${COLOR_GREEN}Firewall configuration using ${processed_firewall_tool_name} for ports 22 and 80 appears to be completed.${COLOR_RESET}"
+    elif ! command -v ufw &>/dev/null && ! command -v firewall-cmd &>/dev/null && ! command -v iptables &>/dev/null ; then
         echo -e "${COLOR_YELLOW}No common firewall management tools (UFW, firewalld, iptables) were detected.${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}Please ensure your system firewall (if any) is configured to allow incoming traffic on TCP ports 22 and 80.${COLOR_RESET}"
-    elif $firewall_action_taken; then
-        echo -e "${COLOR_GREEN}Firewall configuration for ports 22 and 80 completed.${COLOR_RESET}"
     else
-        # This case might occur if a tool was detected but no action was taken (e.g., firewalld not active and couldn't be started)
-        echo -e "${COLOR_YELLOW}No active firewall management tool was successfully configured. Please check your firewall settings manually.${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}Firewall configuration may not be complete. Please review messages above and check your firewall settings manually.${COLOR_RESET}"
     fi
     
-    echo -e "${COLOR_GREEN}Firewall has been configured to allow specific services. This enhances server security.${COLOR_RESET}"
+    echo -e "${COLOR_GREEN}Firewall setup attempt finished. Please verify connectivity and security.${COLOR_RESET}"
     return 0
 }
 
@@ -241,8 +321,10 @@ app_js_path="$current_path/$app_js_file_name"
 package_json_path="$current_path/$package_json_file_name"
 sed_error_log="/tmp/sed_error.log" # Temporary file for sed errors
 
-app_js_url="https://raw.githubusercontent.com/byJoey/IBM-ws-nodejs/refs/heads/main/app.js"
-package_json_url="https://raw.githubusercontent.com/qwer-search/IBM-ws-nodejs/main/package.json"
+app_js_url="https://raw.githubusercontent.com/byJoey/Webhostmost-ws-nodejs/refs/heads/main/app.js"
+package_json_url="https://raw.githubusercontent.com/qwer-search/Webhostmost-ws-nodejs/main/package.json"
+
+
 
 # --- Function Definitions ---
 
