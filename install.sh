@@ -15,12 +15,14 @@ COLOR_MAGENTA='\033[0;35m'
 COLOR_CYAN='\033[0;36m'
 COLOR_RESET='\033[0m' # No Color
 
-echo ""
-echo -e "${COLOR_MAGENTA}Welcome to the IBM-ws-nodejs Configuration Script!${COLOR_RESET}"
-echo -e "${COLOR_MAGENTA}This script is provided by Joey (joeyblog.net) to simplify the configuration process.${COLOR_RESET}"
-echo -e "${COLOR_MAGENTA}Core functionality is based on the work of eooce and qwer-search.${COLOR_RESET}"
-echo -e "${COLOR_MAGENTA}If you have any feedback on this script, please contact via Telegram: https://t.me/+ft-zI76oovgwNmRh${COLOR_RESET}"
+echo -e "${COLOR_MAGENTA}欢迎使用 IBM-sb-ws 配置脚本!${COLOR_RESET}"
+echo -e "${COLOR_MAGENTA}此脚本由 Joey (joeyblog.net) 提供，用于简化配置流程。${COLOR_RESET}"
+echo -e "${COLOR_MAGENTA}核心功能老王实现 eooce 。${COLOR_RESET}"
+echo -e "${COLOR_MAGENTA}如果您对此脚本有任何反馈，请通过 Telegram 联系: https://t.me/+ft-zI76oovgwNmRh${COLOR_RESET}"
 echo -e "${COLOR_MAGENTA}--------------------------------------------------------------------------${COLOR_RESET}"
+
+echo -e "${COLOR_GREEN}==================== Webhostmost-ws-nodejs 配置生成脚本 ====================${COLOR_RESET}"
+
 
 # --- Environment Preparation and Detection ---
 
