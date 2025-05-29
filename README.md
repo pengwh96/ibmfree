@@ -1,6 +1,6 @@
 ## 感谢老王大半夜提供编译支持
 脚本修改基于 **[eooce 老王](https://github.com/eooce)** 
-
+### 注册地址 https://linuxone.cloud.marist.edu/
 ## 运行说明
 
 请按照以下步骤执行安装脚本：
