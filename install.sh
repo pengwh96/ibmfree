@@ -17,7 +17,7 @@ COLOR_CYAN='\033[0;36m'
 COLOR_RESET='\033[0m' # No Color
 
 echo ""
-echo -e "${COLOR_MAGENTA}欢迎使用 Webhostmost-ws-nodejs 配置脚本!${COLOR_RESET}"
+echo -e "${COLOR_MAGENTA}欢迎使用 IBM-ws-nodejs 配置脚本!${COLOR_RESET}"
 echo -e "${COLOR_MAGENTA}此脚本由 Joey (joeyblog.net) 提供，用于简化配置流程。${COLOR_RESET}"
 echo -e "${COLOR_MAGENTA}核心功能基于 eooce 和 qwer-search 的工作。${COLOR_RESET}"
 echo -e "${COLOR_MAGENTA}如果您对此脚本有任何反馈，请通过 Telegram 联系: https://t.me/+ft-zI76oovgwNmRh${COLOR_RESET}"
@@ -348,13 +348,7 @@ if $basic_config_performed && ! $error_occurred; then # Ensure basic config was 
     echo -e "\n${COLOR_GREEN}==================== 所有配置操作完成 ====================${COLOR_RESET}"
     echo -e "配置文件已保存至当前目录：${COLOR_CYAN}$current_path${COLOR_RESET}"
 
-    if [[ -n "$DOMAIN_CONFIGURED" ]]; then
-        echo -e "${COLOR_YELLOW}您需要手动将以下文件上传到您的 Webhostmost 主机，建议的上传路径为：${COLOR_RESET}"
-        echo -e "${COLOR_CYAN}  domains/$DOMAIN_CONFIGURED/public_html${COLOR_RESET}"
-        echo -e "${COLOR_YELLOW}请将以下文件上传到上述路径：${COLOR_RESET}"
-    else
-        echo -e "${COLOR_YELLOW}您需要手动将以下文件上传到您的 Webhostmost 主机的网站根目录 (例如 public_html)：${COLOR_RESET}"
-    fi
+   
     echo -e "  - $app_js_file_name"
     echo -e "  - $package_json_file_name"
     echo -e "${COLOR_GREEN}--------------------------------------------------------${COLOR_RESET}"
