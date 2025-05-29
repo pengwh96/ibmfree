@@ -493,7 +493,7 @@ if ! $error_occurred; then
         echo -e "Subscription Path: ${COLOR_CYAN}$SUB_PATH_CONFIGURED${COLOR_RESET}"
         sub_link_protocol="https" # Default to https for panel link
         sub_link="${sub_link_protocol}://$DOMAIN_CONFIGURED$SUB_PATH_CONFIGURED"
-        echo -e "Node Sharing Link (VLESS Subscription Link): ${COLOR_CYAN}$sub_link${COLOR_RESET}"
+        echo -e "Node Sharing Link  ${COLOR_CYAN}$sub_link${COLOR_RESET}"
         echo -e "${COLOR_GREEN}--------------------------------------------------------${COLOR_RESET}"
     else
         echo -e "${COLOR_RED}An error occurred during basic configuration.${COLOR_RESET}"
