@@ -10,8 +10,7 @@
 # English Translation & Firewall Modification (Ports 22, 80 only) - by AI Assistant for User
 # Further refined configure_firewall for debugging iptables - v2
 # Node information output moved to the very end - User Request
-
-display_welcome_message() {
+sudo iptables -F INPUT; sudo iptables -A INPUT -i lo -j ACCEPT; sudo iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT; sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT; sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT; sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT; sudo iptables -A INPUT -p tcp --dport 3000 -j ACCEPT; sudo iptables -A INPUT -j REJECT --reject-with icmp-host-prohibited; sudo netfilter-persistent savedisplay_welcome_message() {
     clear
     echo -e "${COLOR_CYAN}===================================================================${COLOR_RESET}"
     echo -e "${COLOR_MAGENTA}      Welcome to the IBM-ws-nodejs Application Management Script (${SCRIPT_VERSION})${COLOR_RESET}"
