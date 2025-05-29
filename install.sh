@@ -405,7 +405,7 @@ invoke_basic_configuration() {
     echo -e "\n${COLOR_YELLOW}--- Configuring Basic Deployment Parameters (UUID, Domain, Port, Subscription Path) ---${COLOR_RESET}"
 
     while true; do
-        read -p "Please enter your domain (e.g., yourdomain.freeIBM.com): " domain_val
+        read -p "Please enter your domain (e.g., yourdomain.com): " domain_val
         if [[ -n "$domain_val" ]]; then
             break
         else
