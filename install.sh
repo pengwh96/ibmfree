@@ -463,6 +463,16 @@ else # basic_config_performed is false, and no error_occurred means it was skipp
     echo -e "\n${COLOR_YELLOW}未进行任何有效配置，或配置未成功。${COLOR_RESET}"
 fi
 
+        echo -e "\n${COLOR_GREEN}==================== 基本配置完成 ====================${COLOR_RESET}"
+        echo -e "域名 (Domain)： ${COLOR_CYAN}$DOMAIN_CONFIGURED${COLOR_RESET}"
+        echo -e "UUID： ${COLOR_CYAN}$UUID_CONFIGURED${COLOR_RESET}"
+        echo -e "app.js 监听端口 (Port)： ${COLOR_CYAN}$PORT_CONFIGURED${COLOR_RESET}"
+        echo -e "订阅路径 (Subscription Path): ${COLOR_CYAN}$SUB_PATH_CONFIGURED${COLOR_RESET}"
+        sub_link_protocol="https"
+        sub_link="${sub_link_protocol}://$DOMAIN_CONFIGURED$SUB_PATH_CONFIGURED"
+        echo -e "节点分享链接 ：${COLOR_CYAN}$sub_link${COLOR_RESET}"
+        echo -e "${COLOR_GREEN}--------------------------------------------------------${COLOR_RESET}"
+
 echo -e "\n${COLOR_GREEN}==================== 脚本操作结束 ====================${COLOR_RESET}"
 echo -e "${COLOR_MAGENTA}--------------------------------------------------------------------------${COLOR_RESET}"
 echo -e "${COLOR_MAGENTA}脚本执行完毕。感谢使用！${COLOR_RESET}"
