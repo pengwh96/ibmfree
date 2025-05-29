@@ -1,5 +1,5 @@
 ## 感谢老王大半夜提供编译支持
-本修改基于 **[eooce 老王](https://github.com/eooce)** 
+脚本修改基于 **[eooce 老王](https://github.com/eooce)** 
 
 ## 运行说明
 
