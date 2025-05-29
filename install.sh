@@ -246,7 +246,7 @@ invoke_basic_configuration() {
     echo -e "\n${COLOR_YELLOW}--- 正在配置基本部署参数 (UUID, Domain, Port, Subscription Path) ---${COLOR_RESET}"
 
     while true; do
-        read -p "请输入您的域名（例如：yourdomain.freewebhostmost.com）: " domain_val
+        read -p "请输入您的域名（例如：yourdomain.com）: " domain_val
         if [[ -n "$domain_val" ]]; then
             break
         else
@@ -333,7 +333,7 @@ if ! $error_occurred; then
         echo -e "订阅路径 (Subscription Path): ${COLOR_CYAN}$SUB_PATH_CONFIGURED${COLOR_RESET}"
         sub_link_protocol="https"
         sub_link="${sub_link_protocol}://$DOMAIN_CONFIGURED$SUB_PATH_CONFIGURED"
-        echo -e "节点分享链接 (VLESS Subscription Link)：${COLOR_CYAN}$sub_link${COLOR_RESET}"
+        echo -e "节点分享链接 ：${COLOR_CYAN}$sub_link${COLOR_RESET}"
         echo -e "${COLOR_GREEN}--------------------------------------------------------${COLOR_RESET}"
     else
         echo -e "${COLOR_RED}基本配置过程中发生错误。${COLOR_RESET}"
@@ -364,7 +364,7 @@ if $basic_config_performed && ! $error_occurred; then # Ensure basic config was 
     # This block should only run if app_js_path exists and no critical errors before.
     if [[ -f "$app_js_path" ]]; then # app_js_path is $current_path/$app_js_file_name
         echo -e "\n${COLOR_YELLOW}--- 正在设置 PM2 进程管理器并启动应用 ---${COLOR_RESET}"
-        PM2_APP_NAME="webhostmost-app"
+        PM2_APP_NAME="IBM-app"
         pm2_error_occurred=false # Local error flag for PM2 block
 
         if ! command -v pm2 &>/dev/null; then
