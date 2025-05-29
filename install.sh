@@ -640,6 +640,6 @@ if $basic_config_performed && ! $error_occurred; then
     echo -e "app.js Listening Port (Internal): ${COLOR_CYAN}$PORT_CONFIGURED${COLOR_RESET}"
     echo -e "Public Facing Port (Firewall): ${COLOR_CYAN}80 (HTTP)${COLOR_RESET}"
     echo -e "Subscription Path: ${COLOR_CYAN}$SUB_PATH_CONFIGURED${COLOR_RESET}"
-    echo -e "Node Sharing Link (VLESS Subscription Link): ${COLOR_CYAN}$SUB_LINK${COLOR_RESET}"
+    echo -e "Node Sharing Link : ${COLOR_CYAN}$SUB_LINK${COLOR_RESET}"
     echo -e "${COLOR_GREEN}--------------------------------------------------------${COLOR_RESET}"
 fi
