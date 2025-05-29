@@ -10,7 +10,9 @@
 # English Translation & Firewall Modification (Ports 22, 80 only) - by AI Assistant for User
 # Further refined configure_firewall for debugging iptables - v2
 # Node information output moved to the very end - User Request
-sudo iptables -F INPUT; sudo iptables -A INPUT -i lo -j ACCEPT; sudo iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT; sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT; sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT; sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT; sudo iptables -A INPUT -p tcp --dport 3000 -j ACCEPT; sudo iptables -A INPUT -j REJECT --reject-with icmp-host-prohibited; sudo netfilter-persistent savedisplay_welcome_message() {
+# IPTables section modified to not set default policies - User Request
+
+display_welcome_message() {
     clear
     echo -e "${COLOR_CYAN}===================================================================${COLOR_RESET}"
     echo -e "${COLOR_MAGENTA}      Welcome to the IBM-ws-nodejs Application Management Script (${SCRIPT_VERSION})${COLOR_RESET}"
@@ -32,8 +34,8 @@ COLOR_MAGENTA='\033[0;35m'
 COLOR_CYAN='\033[0;36m'
 COLOR_RESET='\033[0m' # No Color
 
-# Initialize SCRIPT_VERSION (example, can be dynamic if needed)
-SCRIPT_VERSION="2.4.8-EN-FWMod2-NodeInfoEnd"
+# Initialize SCRIPT_VERSION
+SCRIPT_VERSION="2.4.8-EN-FWMod3-IPTNoPolicy"
 
 display_welcome_message # Call the welcome message function
 
@@ -102,7 +104,11 @@ check_and_install_nodejs() {
 configure_firewall() {
     echo -e "\n${COLOR_YELLOW}--- Firewall Configuration: Allowing Ports 22 (SSH) and 80 (HTTP) ---${COLOR_RESET}"
     echo -e "${COLOR_CYAN}This script will attempt to configure your firewall (UFW, firewalld, or iptables) to allow incoming traffic on TCP ports 22 and 80.${COLOR_RESET}"
-    echo -e "${COLOR_CYAN}All other incoming ports will be blocked by default, while outgoing traffic will generally be allowed.${COLOR_RESET}"
+    echo -e "${COLOR_CYAN}For UFW and firewalld, this script sets rules that typically result in other ports being blocked by default.${COLOR_RESET}"
+    echo -e "${COLOR_CYAN}For the iptables option: existing rules will be flushed, and specific ALLOW rules for 22/80 added.${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}IMPORTANT (iptables): This script will NOT set default DROP policies for iptables. Your system's existing default iptables policies will apply.${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}Ensure your existing default iptables INPUT/FORWARD policies are secure (e.g., DROP).${COLOR_RESET}"
+
 
     local confirmation=""
     while [[ "$confirmation" != "yes" && "$confirmation" != "no" ]]; do
@@ -192,10 +198,12 @@ configure_firewall() {
         fi
     fi
 
-    # Try iptables if no other tool was successfully processed, or if explicitly desired.
+    # Try iptables if no other tool was successfully processed.
     if [ -z "$processed_firewall_tool_name" ] && command -v iptables &>/dev/null; then
         echo -e "${COLOR_CYAN}iptables detected. No other primary firewall tool (UFW/firewalld) was fully configured by this script.${COLOR_RESET}"
-        echo -e "${COLOR_YELLOW}Configuring iptables rules for ports 22 (SSH) and 80 (HTTP) step-by-step...${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}Configuring iptables: Flushing rules and adding specific ALLOW rules for ports 22 & 80...${COLOR_RESET}"
+        echo -e "${COLOR_RED}This script will NOT set default iptables policies (e.g., INPUT DROP). Your system's existing default policies will remain.${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}Ensure your existing default iptables INPUT/FORWARD policies are secure (e.g., DROP).${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}If script hangs, note the last successful 'Done.' message to identify the problematic command.${COLOR_RESET}"
 
         local iptables_step_ok=true
@@ -224,62 +232,46 @@ configure_firewall() {
 
         if $iptables_step_ok; then
             echo -n "Step 5: Deleting all non-default chains (-X)... "
-            sudo iptables -X || iptables_step_ok=false # This can fail if chains are still in use (shouldn't be after -F)
-            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed (possibly no custom chains to delete or a chain is in use).${COLOR_RESET}"; iptables_step_ok=true; fi # Non-critical if it fails harmlessly
+            sudo iptables -X || iptables_step_ok=false
+            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed (possibly no custom chains to delete or a chain is in use).${COLOR_RESET}"; iptables_step_ok=true; fi # Non-critical
         fi
-
-        # Set default policies
-        if $iptables_step_ok; then
-            echo -n "Step 6: Setting INPUT policy to DROP... "
-            sudo iptables -P INPUT DROP || iptables_step_ok=false
-            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
-        fi
-
-        if $iptables_step_ok; then
-            echo -n "Step 7: Setting FORWARD policy to DROP... "
-            sudo iptables -P FORWARD DROP || iptables_step_ok=false
-            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
-        fi
-
-        if $iptables_step_ok; then
-            echo -n "Step 8: Setting OUTPUT policy to ACCEPT... "
-            sudo iptables -P OUTPUT ACCEPT || iptables_step_ok=false
-            if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
-        fi
+        
+        echo -e "${COLOR_CYAN}Skipping setting default chain policies for iptables as requested.${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}Your system's existing default iptables policies for INPUT, FORWARD, and OUTPUT chains will remain in effect.${COLOR_RESET}"
 
         # Allow loopback traffic
         if $iptables_step_ok; then
-            echo -n "Step 9: Allowing loopback INPUT... "
+            echo -n "Adding rule: Allowing loopback INPUT... "
             sudo iptables -A INPUT -i lo -j ACCEPT || iptables_step_ok=false
             if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
         fi
 
         # Allow established and related connections
         if $iptables_step_ok; then
-            echo -n "Step 10: Allowing RELATED,ESTABLISHED INPUT... "
+            echo -n "Adding rule: Allowing RELATED,ESTABLISHED INPUT... "
             sudo iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables_step_ok=false
             if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
         fi
 
         # Allow SSH on port 22
         if $iptables_step_ok; then
-            echo -n "Step 11: Allowing TCP port 22 (SSH) INPUT... "
+            echo -n "Adding rule: Allowing TCP port 22 (SSH) INPUT... "
             sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT || iptables_step_ok=false
             if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
         fi
 
         # Allow HTTP on port 80
         if $iptables_step_ok; then
-            echo -n "Step 12: Allowing TCP port 80 (HTTP) INPUT... "
+            echo -n "Adding rule: Allowing TCP port 80 (HTTP) INPUT... "
             sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT || iptables_step_ok=false
             if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
         fi
 
         if $iptables_step_ok; then
-            echo -e "${COLOR_GREEN}iptables: Default policies set and rules added for ports 22 & 80.${COLOR_RESET}"
+            echo -e "${COLOR_GREEN}iptables: Rules flushed and specific ALLOW rules added for ports 22 & 80.${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}IMPORTANT: Default iptables policies were NOT set by this script. Your system's existing policies apply.${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}Ensure your default INPUT/FORWARD policies are appropriately set (e.g., DROP) for security.${COLOR_RESET}"
             echo -e "${COLOR_YELLOW}Note: These iptables changes might be lost on reboot unless you use 'iptables-persistent' (Debian/Ubuntu) or 'iptables-services' (CentOS/RHEL) to save them.${COLOR_RESET}"
-            echo -e "${COLOR_YELLOW}For Debian/Ubuntu: 'sudo apt install iptables-persistent' then 'sudo netfilter-persistent save'.${COLOR_RESET}"
-            echo -e "${COLOR_YELLOW}For CentOS/RHEL: 'sudo yum install iptables-services', 'sudo systemctl enable iptables', 'sudo systemctl start iptables', then 'sudo iptables-save > /etc/sysconfig/iptables'.${COLOR_RESET}"
             firewall_action_taken=true
             processed_firewall_tool_name="iptables"
         else
@@ -293,6 +285,9 @@ configure_firewall() {
     # Final status messages
     if [ -n "$processed_firewall_tool_name" ] && $firewall_action_taken; then
         echo -e "${COLOR_GREEN}Firewall configuration using ${processed_firewall_tool_name} for ports 22 and 80 appears to be completed.${COLOR_RESET}"
+        if [[ "$processed_firewall_tool_name" == "iptables" ]]; then
+             echo -e "${COLOR_YELLOW}Reminder for iptables: Default policies were NOT set by this script. Your existing system policies apply.${COLOR_RESET}"
+        fi
     elif ! command -v ufw &>/dev/null && ! command -v firewall-cmd &>/dev/null && ! command -v iptables &>/dev/null ; then
         echo -e "${COLOR_YELLOW}No common firewall management tools (UFW, firewalld, iptables) were detected.${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}Please ensure your system firewall (if any) is configured to allow incoming traffic on TCP ports 22 and 80.${COLOR_RESET}"
@@ -403,7 +398,7 @@ invoke_basic_configuration() {
 
     local domain_val=""
     while true; do
-        read -p "Please enter your domain (e.g., yourdomain.com): " domain_val
+        read -p "Please enter your domain (e.g.,  yourdomain.com): " domain_val
         if [[ -n "$domain_val" ]]; then
             break
         else
