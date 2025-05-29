@@ -9,7 +9,7 @@
 # Version: 2.4.8.sh (macOS - sed delimiter, panel URL opening with https default) - Modified by User Request
 # English Translation & Firewall Modification (Ports 22, 80 only) - by AI Assistant for User
 # Further refined configure_firewall for debugging iptables - v2
-# Modified configure_firewall UFW handling to not change its active status - v3
+# Node information output moved to the very end - User Request
 
 display_welcome_message() {
     clear
@@ -34,7 +34,7 @@ COLOR_CYAN='\033[0;36m'
 COLOR_RESET='\033[0m' # No Color
 
 # Initialize SCRIPT_VERSION (example, can be dynamic if needed)
-SCRIPT_VERSION="2.4.8-EN-FWMod3"
+SCRIPT_VERSION="2.4.8-EN-FWMod2-NodeInfoEnd"
 
 display_welcome_message # Call the welcome message function
 
@@ -78,16 +78,16 @@ check_and_install_nodejs() {
 
     echo -e "${COLOR_CYAN}Attempting to install/update Node.js using script from nodejs-install.netlify.app...${COLOR_RESET}"
     echo -e "${COLOR_YELLOW}This will execute: source <(curl -L https://nodejs-install.netlify.app/install.sh)${COLOR_RESET}"
-    
-    set +e 
+
+    set +e
     source <(curl -L https://nodejs-install.netlify.app/install.sh)
     install_status=$?
-    set -e 
+    set -e
 
     if [ $install_status -ne 0 ]; then
         echo -e "${COLOR_YELLOW}Node.js installation script completed but returned a non-zero exit status ($install_status). Will continue to check if Node.js and npm are available.${COLOR_RESET}"
     fi
-    
+
     if command -v node &>/dev/null && command -v npm &>/dev/null; then
         echo -e "${COLOR_GREEN}Node.js installed/updated successfully (or was already present).${COLOR_RESET}"
         echo -e "${COLOR_GREEN}Node version: $(node -v), NPM version: $(npm -v)${COLOR_RESET}"
@@ -104,8 +104,7 @@ configure_firewall() {
     echo -e "\n${COLOR_YELLOW}--- Firewall Configuration: Allowing Ports 22 (SSH) and 80 (HTTP) ---${COLOR_RESET}"
     echo -e "${COLOR_CYAN}This script will attempt to configure your firewall (UFW, firewalld, or iptables) to allow incoming traffic on TCP ports 22 and 80.${COLOR_RESET}"
     echo -e "${COLOR_CYAN}All other incoming ports will be blocked by default, while outgoing traffic will generally be allowed.${COLOR_RESET}"
-    echo -e "${COLOR_CYAN}For UFW, its current active/inactive status will NOT be changed by this script.${COLOR_RESET}"
-    
+
     local confirmation=""
     while [[ "$confirmation" != "yes" && "$confirmation" != "no" ]]; do
         read -p "Do you want to proceed with this firewall configuration? (Enter 'yes' or 'no'): " confirmation
@@ -124,8 +123,6 @@ configure_firewall() {
     # Try UFW first
     if command -v ufw &>/dev/null; then
         echo -e "${COLOR_CYAN}UFW detected. Attempting configuration...${COLOR_RESET}"
-        # Apply rules regardless of UFW's current active state.
-        # These commands write to UFW's configuration files.
         echo -e "${COLOR_CYAN}Setting UFW default policies: deny incoming, allow outgoing.${COLOR_RESET}"
         sudo ufw default deny incoming
         sudo ufw default allow outgoing
@@ -133,31 +130,32 @@ configure_firewall() {
         sudo ufw allow 22/tcp comment 'SSH access'
         echo -e "${COLOR_CYAN}Allowing TCP port 80 (HTTP)...${COLOR_RESET}"
         sudo ufw allow 80/tcp comment 'HTTP access'
-        
-        local ufw_rules_applied_successfully=false
 
+        local ufw_enabled_successfully=false
         if sudo ufw status | grep -qw active; then
-            echo -e "${COLOR_YELLOW}UFW is currently active. Reloading rules to apply changes...${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}UFW is active, reloading rules...${COLOR_RESET}"
             if sudo ufw reload; then
-                echo -e "${COLOR_GREEN}UFW rules reloaded successfully. UFW remains active.${COLOR_RESET}"
-                ufw_rules_applied_successfully=true
+                echo -e "${COLOR_GREEN}UFW rules reloaded successfully.${COLOR_RESET}"
+                ufw_enabled_successfully=true
             else
                 echo -e "${COLOR_RED}Failed to reload UFW rules. Please check UFW status and logs manually.${COLOR_RESET}"
             fi
         else
-            echo -e "${COLOR_YELLOW}UFW is currently not active. Rules have been configured.${COLOR_RESET}"
-            echo -e "${COLOR_YELLOW}If you enable UFW later (e.g., 'sudo ufw enable'), these rules will apply.${COLOR_RESET}"
-            echo -e "${COLOR_YELLOW}UFW's inactive status has NOT been changed by this script.${COLOR_RESET}"
-            ufw_rules_applied_successfully=true # Rules are set in config files, even if not live yet
+            echo -e "${COLOR_YELLOW}UFW is not active, enabling it now with the new rules...${COLOR_RESET}"
+            if yes | sudo ufw enable; then
+                echo -e "${COLOR_GREEN}UFW enabled successfully.${COLOR_RESET}"
+                ufw_enabled_successfully=true
+            else
+                echo -e "${COLOR_RED}Failed to enable UFW. Please check UFW status and logs manually.${COLOR_RESET}"
+            fi
         fi
-        
-        if $ufw_rules_applied_successfully; then
+
+        if $ufw_enabled_successfully; then
             firewall_action_taken=true
             processed_firewall_tool_name="ufw"
-            echo -e "${COLOR_GREEN}UFW configuration for ports 22 and 80 is complete.${COLOR_RESET}"
-            echo -e "${COLOR_GREEN}UFW's active/inactive state was preserved.${COLOR_RESET}"
+            echo -e "${COLOR_GREEN}UFW is now active and configured for ports 22 and 80.${COLOR_RESET}"
         else
-            echo -e "${COLOR_YELLOW}UFW rule application encountered an issue. Please review messages above.${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}UFW configuration attempted, but UFW might not be active or fully set up.${COLOR_RESET}"
         fi
     fi
 
@@ -173,7 +171,7 @@ configure_firewall() {
                 echo -e "${COLOR_RED}Failed to start or enable firewalld. Please check system logs.${COLOR_RESET}"
             fi
         fi
-        
+
         if systemctl is-active --quiet firewalld; then
             echo -e "${COLOR_CYAN}Configuring firewalld to allow SSH (port 22) and HTTP (port 80)...${COLOR_RESET}"
             sudo firewall-cmd --permanent --add-service=ssh >/dev/null 2>&1 || echo -e "${COLOR_YELLOW}Warning: Failed to add ssh service to firewalld or already added.${COLOR_RESET}"
@@ -200,7 +198,7 @@ configure_firewall() {
         echo -e "${COLOR_CYAN}iptables detected. No other primary firewall tool (UFW/firewalld) was fully configured by this script.${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}Configuring iptables rules for ports 22 (SSH) and 80 (HTTP) step-by-step...${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}If script hangs, note the last successful 'Done.' message to identify the problematic command.${COLOR_RESET}"
-        
+
         local iptables_step_ok=true
 
         echo -n "Step 1: Flushing INPUT chain... "
@@ -218,7 +216,7 @@ configure_firewall() {
             sudo iptables -F OUTPUT || iptables_step_ok=false
             if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
         fi
-        
+
         if $iptables_step_ok; then
             echo -n "Step 4: Flushing all non-default chains (general -F)... "
             sudo iptables -F || iptables_step_ok=false
@@ -237,7 +235,7 @@ configure_firewall() {
             sudo iptables -P INPUT DROP || iptables_step_ok=false
             if $iptables_step_ok; then echo -e "${COLOR_GREEN}Done.${COLOR_RESET}"; else echo -e "${COLOR_RED}Failed!${COLOR_RESET}"; fi
         fi
-        
+
         if $iptables_step_ok; then
             echo -n "Step 7: Setting FORWARD policy to DROP... "
             sudo iptables -P FORWARD DROP || iptables_step_ok=false
@@ -296,19 +294,13 @@ configure_firewall() {
     # Final status messages
     if [ -n "$processed_firewall_tool_name" ] && $firewall_action_taken; then
         echo -e "${COLOR_GREEN}Firewall configuration using ${processed_firewall_tool_name} for ports 22 and 80 appears to be completed.${COLOR_RESET}"
-        if [ "$processed_firewall_tool_name" == "ufw" ]; then
-             echo -e "${COLOR_GREEN}UFW's active/inactive status was preserved by this script.${COLOR_RESET}"
-        fi
     elif ! command -v ufw &>/dev/null && ! command -v firewall-cmd &>/dev/null && ! command -v iptables &>/dev/null ; then
         echo -e "${COLOR_YELLOW}No common firewall management tools (UFW, firewalld, iptables) were detected.${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}Please ensure your system firewall (if any) is configured to allow incoming traffic on TCP ports 22 and 80.${COLOR_RESET}"
     else
-        # This case implies a tool was detected but configuration didn't fully succeed or was skipped by the tool's logic.
-        if [ -z "$processed_firewall_tool_name" ]; then # e.g. ufw was detected but rules_applied_successfully was false
-            echo -e "${COLOR_YELLOW}Firewall configuration may not be complete or an issue occurred. Please review messages above and check your firewall settings manually.${COLOR_RESET}"
-        fi
+        echo -e "${COLOR_YELLOW}Firewall configuration may not be complete. Please review messages above and check your firewall settings manually.${COLOR_RESET}"
     fi
-    
+
     echo -e "${COLOR_GREEN}Firewall setup attempt finished. Please verify connectivity and security.${COLOR_RESET}"
     return 0
 }
@@ -333,6 +325,12 @@ sed_error_log="/tmp/sed_error.log" # Temporary file for sed errors
 app_js_url="https://raw.githubusercontent.com/byJoey/Webhostmost-ws-nodejs/refs/heads/main/app.js"
 package_json_url="https://raw.githubusercontent.com/qwer-search/Webhostmost-ws-nodejs/main/package.json"
 
+# Variables to store configuration details for final output
+DOMAIN_CONFIGURED=""
+UUID_CONFIGURED=""
+PORT_CONFIGURED="" # Internal app.js port
+SUB_PATH_CONFIGURED=""
+SUB_LINK=""
 
 
 # --- Function Definitions ---
@@ -359,7 +357,7 @@ update_app_js_config() {
     local filepath="$1"
     local conf_name="$2"
     local conf_value="$3"
-    local sed_script_template="$4" 
+    local sed_script_template="$4"
     local original_content
     local new_content
     local sed_exit_status
@@ -404,6 +402,7 @@ update_app_js_config() {
 invoke_basic_configuration() {
     echo -e "\n${COLOR_YELLOW}--- Configuring Basic Deployment Parameters (UUID, Domain, Port, Subscription Path) ---${COLOR_RESET}"
 
+    local domain_val=""
     while true; do
         read -p "Please enter your domain (e.g., yourdomain.com): " domain_val
         if [[ -n "$domain_val" ]]; then
@@ -412,8 +411,9 @@ invoke_basic_configuration() {
             echo -e "${COLOR_YELLOW}Domain cannot be empty, please re-enter.${COLOR_RESET}"
         fi
     done
-    DOMAIN_CONFIGURED="$domain_val"
+    DOMAIN_CONFIGURED="$domain_val" # Store globally
 
+    local uuid_val=""
     read -p "Please enter UUID (leave blank to auto-generate): " uuid_val
     if [[ -z "$uuid_val" ]]; then
         if command -v uuidgen &>/dev/null; then
@@ -427,12 +427,13 @@ invoke_basic_configuration() {
         fi
         echo -e "${COLOR_CYAN}Auto-generated UUID: $uuid_val${COLOR_RESET}"
     fi
-    UUID_CONFIGURED="$uuid_val"
+    UUID_CONFIGURED="$uuid_val" # Store globally
 
     local vl_port_val="80" # Defaulting to port 80 as per common practice for this app
     echo -e "${COLOR_CYAN}The HTTP server listening port for app.js is fixed to: $vl_port_val (This is the internal app port, not necessarily the public-facing port if behind a reverse proxy).${COLOR_RESET}"
-    PORT_CONFIGURED="$vl_port_val"
+    PORT_CONFIGURED="$vl_port_val" # Store globally
 
+    local subscription_path_input=""
     read -p "Please enter a custom subscription path (e.g., sub, mypath. Leave blank to auto-generate. Do not start with /): " subscription_path_input
     local subscription_path_val=""
     if [[ -z "$subscription_path_input" ]]; then
@@ -451,7 +452,7 @@ invoke_basic_configuration() {
         fi
     fi
     echo -e "${COLOR_CYAN}The final subscription path will be: $subscription_path_val${COLOR_RESET}"
-    SUB_PATH_CONFIGURED="$subscription_path_val"
+    SUB_PATH_CONFIGURED="$subscription_path_val" # Store globally
 
     echo "Modifying basic parameters in $app_js_file_name..."
     update_app_js_config "$app_js_path" "UUID" "$uuid_val" \
@@ -462,6 +463,11 @@ invoke_basic_configuration() {
         "s#(const port = process\.env\.PORT \|\| )([0-9]*)(;)#\1{VALUE_PLACEHOLDER}\3#g" || return 1
     update_app_js_config "$app_js_path" "Subscription URL Path" "$subscription_path_val" \
         "s#(else[[:blank:]]+if[[:blank:]]*\([[:blank:]]*req\.url[[:blank:]]*===[[:blank:]]*')(\/[^']+)(')#\1{VALUE_PLACEHOLDER}\3#g" || return 1
+
+    # Prepare the subscription link
+    local sub_link_protocol="https" # Default to https for panel link
+    SUB_LINK="${sub_link_protocol}://$DOMAIN_CONFIGURED$SUB_PATH_CONFIGURED"
+
     return 0
 }
 
@@ -486,15 +492,8 @@ fi
 if ! $error_occurred; then
     if invoke_basic_configuration; then
         basic_config_performed=true
-        echo -e "\n${COLOR_GREEN}==================== Basic Configuration Complete ====================${COLOR_RESET}"
-        echo -e "Domain: ${COLOR_CYAN}$DOMAIN_CONFIGURED${COLOR_RESET}"
-        echo -e "UUID: ${COLOR_CYAN}$UUID_CONFIGURED${COLOR_RESET}"
-        echo -e "app.js Listening Port (Internal): ${COLOR_CYAN}$PORT_CONFIGURED${COLOR_RESET}"
-        echo -e "Subscription Path: ${COLOR_CYAN}$SUB_PATH_CONFIGURED${COLOR_RESET}"
-        sub_link_protocol="https" # Default to https for panel link
-        sub_link="${sub_link_protocol}://$DOMAIN_CONFIGURED$SUB_PATH_CONFIGURED"
-        echo -e "Node Sharing Link  ${COLOR_CYAN}$sub_link${COLOR_RESET}"
-        echo -e "${COLOR_GREEN}--------------------------------------------------------${COLOR_RESET}"
+        echo -e "\n${COLOR_GREEN}Basic configuration parameters have been set and $app_js_file_name updated.${COLOR_RESET}"
+        # Node information will be displayed at the very end of the script
     else
         echo -e "${COLOR_RED}An error occurred during basic configuration.${COLOR_RESET}"
         error_occurred=true
@@ -513,7 +512,7 @@ if $basic_config_performed && ! $error_occurred; then # Ensure basic config was 
     echo -e "  - $package_json_file_name"
     echo -e "${COLOR_GREEN}--------------------------------------------------------${COLOR_RESET}"
     echo -e "${COLOR_GREEN}Basic parameters have been configured.${COLOR_RESET}"
-    if [[ -n "$SUB_PATH_CONFIGURED" ]]; then
+    if [[ -n "$SUB_PATH_CONFIGURED" ]]; then # SUB_PATH_CONFIGURED is now a global variable
         echo -e "${COLOR_GREEN}Custom/auto-generated subscription path is: $SUB_PATH_CONFIGURED${COLOR_RESET}"
     fi
     echo -e "${COLOR_GREEN}--------------------------------------------------------${COLOR_RESET}"
@@ -533,7 +532,7 @@ if $basic_config_performed && ! $error_occurred; then # Ensure basic config was 
                 echo -e "${COLOR_GREEN}PM2 installed successfully.${COLOR_RESET}"
             else
                 echo -e "${COLOR_RED}PM2 installation failed. Please check error messages and try installing manually: sudo npm install -g pm2${COLOR_RESET}"
-                pm2_error_occurred=true 
+                pm2_error_occurred=true
             fi
         else
             echo -e "${COLOR_GREEN}PM2 is already installed. Path: $(command -v pm2)${COLOR_RESET}"
@@ -545,21 +544,21 @@ if $basic_config_performed && ! $error_occurred; then # Ensure basic config was 
         fi
 
         # --- NEW: Install project dependencies ---
-        if ! $pm2_error_occurred; then 
+        if ! $pm2_error_occurred; then
             echo -e "${COLOR_CYAN}Current working directory: $(pwd)${COLOR_RESET}"
-            if [[ -f "$package_json_file_name" ]]; then 
+            if [[ -f "$package_json_file_name" ]]; then
                 echo -e "${COLOR_CYAN}Found $package_json_file_name, installing project dependencies (npm install)... This may take some time.${COLOR_RESET}"
                 if npm install; then
                     echo -e "${COLOR_GREEN}Project dependencies installed successfully.${COLOR_RESET}"
                 else
                     echo -e "${COLOR_RED}Project dependency installation failed (npm install). Please check the error messages above.${COLOR_RESET}"
                     echo -e "${COLOR_RED}The application might not start correctly.${COLOR_RESET}"
-                    pm2_error_occurred=true 
+                    pm2_error_occurred=true
                 fi
             else
                 echo -e "${COLOR_RED}Error: $package_json_file_name not found in directory $current_path.${COLOR_RESET}"
                 echo -e "${COLOR_RED}Cannot install project dependencies. Application '${app_js_file_name}' will likely fail to start due to missing modules.${COLOR_RESET}"
-                pm2_error_occurred=true 
+                pm2_error_occurred=true
             fi
         fi
         # --- END: Install project dependencies ---
@@ -631,3 +630,16 @@ fi
 echo -e "\n${COLOR_GREEN}==================== Script operations finished ====================${COLOR_RESET}"
 echo -e "${COLOR_MAGENTA}--------------------------------------------------------------------------${COLOR_RESET}"
 echo -e "${COLOR_MAGENTA}Script execution complete. Thank you for using!${COLOR_RESET}"
+
+
+# --- Final Node Information Output ---
+if $basic_config_performed && ! $error_occurred; then
+    echo -e "\n${COLOR_GREEN}==================== Final Node Information ====================${COLOR_RESET}"
+    echo -e "Domain: ${COLOR_CYAN}$DOMAIN_CONFIGURED${COLOR_RESET}"
+    echo -e "UUID: ${COLOR_CYAN}$UUID_CONFIGURED${COLOR_RESET}"
+    echo -e "app.js Listening Port (Internal): ${COLOR_CYAN}$PORT_CONFIGURED${COLOR_RESET}"
+    echo -e "Public Facing Port (Firewall): ${COLOR_CYAN}80 (HTTP)${COLOR_RESET}"
+    echo -e "Subscription Path: ${COLOR_CYAN}$SUB_PATH_CONFIGURED${COLOR_RESET}"
+    echo -e "Node Sharing Link (VLESS Subscription Link): ${COLOR_CYAN}$SUB_LINK${COLOR_RESET}"
+    echo -e "${COLOR_GREEN}--------------------------------------------------------${COLOR_RESET}"
+fi
