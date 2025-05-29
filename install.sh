@@ -474,7 +474,7 @@ if $basic_config_performed; then
     echo -e "UUID: ${COLOR_CYAN}$UUID_CONFIGURED${COLOR_RESET}"
     echo -e "app.js Listening Port: ${COLOR_CYAN}$PORT_CONFIGURED${COLOR_RESET}"
     echo -e " Path: ${COLOR_CYAN}$SUB_PATH_CONFIGURED${COLOR_RESET}"
-    sub_link_protocol="https"
+    sub_link_protocol="http"
     sub_link="${sub_link_protocol}://$DOMAIN_CONFIGURED$SUB_PATH_CONFIGURED"
     echo -e " Link: ${COLOR_CYAN}$sub_link${COLOR_RESET}"
     echo -e "${COLOR_GREEN}--------------------------------------------------------${COLOR_RESET}"
