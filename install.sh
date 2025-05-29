@@ -151,8 +151,8 @@ case "$main_choice" in
     ARGO_DOMAIN=""
     ARGO_AUTH=""
     NAME="ibm" # 节点名称保留一个默认值
-    CFIP=""
-    CFPORT=""
+    CFIP="cloudflare.182682.xyz"
+    CFPORT="443"
     CHAT_ID=""
     BOT_TOKEN=""
     UPLOAD_URL=""
