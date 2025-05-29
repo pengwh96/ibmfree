@@ -9,6 +9,7 @@
 # Version: 2.4.8.sh (macOS - sed delimiter, panel URL opening with https default) - Modified by User Request
 # English Translation & Firewall Modification (Ports 22, 80 only) - by AI Assistant for User
 # Further refined configure_firewall for debugging iptables - v2
+# Modified configure_firewall UFW handling to not change its active status - v3
 
 display_welcome_message() {
     clear
@@ -33,7 +34,7 @@ COLOR_CYAN='\033[0;36m'
 COLOR_RESET='\033[0m' # No Color
 
 # Initialize SCRIPT_VERSION (example, can be dynamic if needed)
-SCRIPT_VERSION="2.4.8-EN-FWMod2"
+SCRIPT_VERSION="2.4.8-EN-FWMod3"
 
 display_welcome_message # Call the welcome message function
 
@@ -103,6 +104,7 @@ configure_firewall() {
     echo -e "\n${COLOR_YELLOW}--- Firewall Configuration: Allowing Ports 22 (SSH) and 80 (HTTP) ---${COLOR_RESET}"
     echo -e "${COLOR_CYAN}This script will attempt to configure your firewall (UFW, firewalld, or iptables) to allow incoming traffic on TCP ports 22 and 80.${COLOR_RESET}"
     echo -e "${COLOR_CYAN}All other incoming ports will be blocked by default, while outgoing traffic will generally be allowed.${COLOR_RESET}"
+    echo -e "${COLOR_CYAN}For UFW, its current active/inactive status will NOT be changed by this script.${COLOR_RESET}"
     
     local confirmation=""
     while [[ "$confirmation" != "yes" && "$confirmation" != "no" ]]; do
@@ -122,6 +124,8 @@ configure_firewall() {
     # Try UFW first
     if command -v ufw &>/dev/null; then
         echo -e "${COLOR_CYAN}UFW detected. Attempting configuration...${COLOR_RESET}"
+        # Apply rules regardless of UFW's current active state.
+        # These commands write to UFW's configuration files.
         echo -e "${COLOR_CYAN}Setting UFW default policies: deny incoming, allow outgoing.${COLOR_RESET}"
         sudo ufw default deny incoming
         sudo ufw default allow outgoing
@@ -130,31 +134,30 @@ configure_firewall() {
         echo -e "${COLOR_CYAN}Allowing TCP port 80 (HTTP)...${COLOR_RESET}"
         sudo ufw allow 80/tcp comment 'HTTP access'
         
-        local ufw_enabled_successfully=false
+        local ufw_rules_applied_successfully=false
+
         if sudo ufw status | grep -qw active; then
-            echo -e "${COLOR_YELLOW}UFW is active, reloading rules...${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}UFW is currently active. Reloading rules to apply changes...${COLOR_RESET}"
             if sudo ufw reload; then
-                echo -e "${COLOR_GREEN}UFW rules reloaded successfully.${COLOR_RESET}"
-                ufw_enabled_successfully=true
+                echo -e "${COLOR_GREEN}UFW rules reloaded successfully. UFW remains active.${COLOR_RESET}"
+                ufw_rules_applied_successfully=true
             else
                 echo -e "${COLOR_RED}Failed to reload UFW rules. Please check UFW status and logs manually.${COLOR_RESET}"
             fi
         else
-            echo -e "${COLOR_YELLOW}UFW is not active, enabling it now with the new rules...${COLOR_RESET}"
-            if yes | sudo ufw enable; then 
-                echo -e "${COLOR_GREEN}UFW enabled successfully.${COLOR_RESET}"
-                ufw_enabled_successfully=true
-            else
-                echo -e "${COLOR_RED}Failed to enable UFW. Please check UFW status and logs manually.${COLOR_RESET}"
-            fi
+            echo -e "${COLOR_YELLOW}UFW is currently not active. Rules have been configured.${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}If you enable UFW later (e.g., 'sudo ufw enable'), these rules will apply.${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}UFW's inactive status has NOT been changed by this script.${COLOR_RESET}"
+            ufw_rules_applied_successfully=true # Rules are set in config files, even if not live yet
         fi
         
-        if $ufw_enabled_successfully; then
+        if $ufw_rules_applied_successfully; then
             firewall_action_taken=true
             processed_firewall_tool_name="ufw"
-            echo -e "${COLOR_GREEN}UFW is now active and configured for ports 22 and 80.${COLOR_RESET}"
+            echo -e "${COLOR_GREEN}UFW configuration for ports 22 and 80 is complete.${COLOR_RESET}"
+            echo -e "${COLOR_GREEN}UFW's active/inactive state was preserved.${COLOR_RESET}"
         else
-            echo -e "${COLOR_YELLOW}UFW configuration attempted, but UFW might not be active or fully set up.${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}UFW rule application encountered an issue. Please review messages above.${COLOR_RESET}"
         fi
     fi
 
@@ -293,11 +296,17 @@ configure_firewall() {
     # Final status messages
     if [ -n "$processed_firewall_tool_name" ] && $firewall_action_taken; then
         echo -e "${COLOR_GREEN}Firewall configuration using ${processed_firewall_tool_name} for ports 22 and 80 appears to be completed.${COLOR_RESET}"
+        if [ "$processed_firewall_tool_name" == "ufw" ]; then
+             echo -e "${COLOR_GREEN}UFW's active/inactive status was preserved by this script.${COLOR_RESET}"
+        fi
     elif ! command -v ufw &>/dev/null && ! command -v firewall-cmd &>/dev/null && ! command -v iptables &>/dev/null ; then
         echo -e "${COLOR_YELLOW}No common firewall management tools (UFW, firewalld, iptables) were detected.${COLOR_RESET}"
         echo -e "${COLOR_YELLOW}Please ensure your system firewall (if any) is configured to allow incoming traffic on TCP ports 22 and 80.${COLOR_RESET}"
     else
-        echo -e "${COLOR_YELLOW}Firewall configuration may not be complete. Please review messages above and check your firewall settings manually.${COLOR_RESET}"
+        # This case implies a tool was detected but configuration didn't fully succeed or was skipped by the tool's logic.
+        if [ -z "$processed_firewall_tool_name" ]; then # e.g. ufw was detected but rules_applied_successfully was false
+            echo -e "${COLOR_YELLOW}Firewall configuration may not be complete or an issue occurred. Please review messages above and check your firewall settings manually.${COLOR_RESET}"
+        fi
     fi
     
     echo -e "${COLOR_GREEN}Firewall setup attempt finished. Please verify connectivity and security.${COLOR_RESET}"
