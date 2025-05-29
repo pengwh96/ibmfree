@@ -7,6 +7,7 @@
 #   - https://github.com/eooce
 #   - https://github.com/qwer-search
 # Version: 2.4.8.sh (macOS - sed delimiter, panel URL opening with https default) - Modified by User Request
+# Firewall rules updated to be specific (22, 80, 443) and persistent.
 
 # --- Color Definitions ---
 COLOR_RED='\033[0;31m'
@@ -56,16 +57,16 @@ check_and_install_nodejs() {
 
     echo -e "${COLOR_CYAN}Attempting to install/update Node.js using script from nodejs-install.netlify.app...${COLOR_RESET}"
     echo -e "${COLOR_YELLOW}This will execute: source <(curl -L https://nodejs-install.netlify.app/install.sh)${COLOR_RESET}"
-    
-    set +e 
+
+    set +e
     source <(curl -L https://nodejs-install.netlify.app/install.sh)
     install_status=$?
-    set -e 
+    set -e
 
     if [ $install_status -ne 0 ]; then
         echo -e "${COLOR_YELLOW}Node.js installation script executed, but returned a non-zero exit status ($install_status). Will proceed to check if Node.js and npm are available.${COLOR_RESET}"
     fi
-    
+
     if command -v node &>/dev/null && command -v npm &>/dev/null; then
         echo -e "${COLOR_GREEN}Node.js installation/update successful (or already existed).${COLOR_RESET}"
         echo -e "${COLOR_GREEN}Node version: $(node -v), NPM version: $(npm -v)${COLOR_RESET}"
@@ -77,27 +78,33 @@ check_and_install_nodejs() {
     return 0
 }
 
-# Function: Configure firewall - "Allow All" mode
+# Function: Configure firewall with specific rules (SSH, HTTP, HTTPS)
 configure_firewall() {
-    echo -e "\n${COLOR_RED}--- Warning: Firewall 'Allow All' Configuration ---${COLOR_RESET}"
-    echo -e "${COLOR_RED}You have requested to configure the firewall to 'allow all'. This means all types of inbound and outbound network connections will be permitted.${COLOR_RESET}"
-    echo -e "${COLOR_RED}This will significantly increase the security risk to your server. It is strongly recommended to use this configuration only in absolutely trusted internal networks or temporary testing environments.${COLOR_RESET}"
-    echo -e "${COLOR_RED}In a production environment, you should configure the firewall to allow only necessary ports and services.${COLOR_RESET}"
-    
+    echo -e "\n${COLOR_YELLOW}--- Firewall Configuration ---${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}This script will attempt to configure 'iptables' to allow traffic on essential ports:${COLOR_RESET}"
+    echo -e "${COLOR_CYAN}- TCP Port 22 (SSH)${COLOR_RESET}"
+    echo -e "${COLOR_CYAN}- TCP Port 80 (HTTP)${COLOR_RESET}"
+    echo -e "${COLOR_CYAN}- TCP Port 443 (HTTPS)${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}Loopback traffic and established/related connections will also be allowed.${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}All other incoming traffic will be REJECTED by default on the INPUT chain.${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}Existing UFW or firewalld services may be disabled if found active to allow iptables to manage the firewall.${COLOR_RESET}"
+    echo -e "${COLOR_RED}Ensure this configuration is appropriate for your server's needs before proceeding.${COLOR_RESET}"
+
     local confirmation=""
     while [[ "$confirmation" != "yes" && "$confirmation" != "no" ]]; do
-        read -p "Are you sure you want to proceed with configuring the firewall to 'allow all'? (Please enter 'yes' or 'no'): " confirmation
+        read -p "Do you want to proceed with this iptables firewall configuration? (Please enter 'yes' or 'no'): " confirmation
         confirmation=$(echo "$confirmation" | tr '[:upper:]' '[:lower:]') # Convert to lowercase
     done
 
     if [[ "$confirmation" != "yes" ]]; then
-        echo -e "${COLOR_YELLOW}Operation cancelled. Firewall configuration unchanged.${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}Operation cancelled by user. Firewall configuration unchanged.${COLOR_RESET}"
         return 1 # User cancelled
     fi
 
-    echo -e "\n${COLOR_YELLOW}--- Attempting to configure firewall to 'allow all' ---${COLOR_RESET}"
-    firewall_action_taken=false
+    echo -e "\n${COLOR_YELLOW}--- Applying Firewall Configuration ---${COLOR_RESET}"
+    firewall_action_taken=false # Flag to track if any firewall-modifying action was taken
 
+    # Disable UFW if active
     if command -v ufw &>/dev/null; then
         echo -e "${COLOR_CYAN}Detected UFW...${COLOR_RESET}"
         if sudo ufw status | grep -qw active; then
@@ -106,13 +113,14 @@ configure_firewall() {
                 echo -e "${COLOR_GREEN}UFW has been disabled.${COLOR_RESET}"
                 firewall_action_taken=true
             else
-                echo -e "${COLOR_RED}Failed to disable UFW. Please check manually.${COLOR_RESET}"
+                echo -e "${COLOR_RED}Failed to disable UFW. Manual intervention may be required.${COLOR_RESET}"
             fi
         else
             echo -e "${COLOR_GREEN}UFW is currently inactive.${COLOR_RESET}"
         fi
     fi
 
+    # Disable firewalld if active
     if command -v firewall-cmd &>/dev/null; then
         echo -e "${COLOR_CYAN}Detected firewalld...${COLOR_RESET}"
         if systemctl is-active --quiet firewalld; then
@@ -121,41 +129,94 @@ configure_firewall() {
                 echo -e "${COLOR_GREEN}firewalld has been stopped and disabled.${COLOR_RESET}"
                 firewall_action_taken=true
             else
-                echo -e "${COLOR_RED}Failed to stop or disable firewalld. Please check manually.${COLOR_RESET}"
+                echo -e "${COLOR_RED}Failed to stop or disable firewalld. Manual intervention may be required.${COLOR_RESET}"
             fi
         else
             echo -e "${COLOR_GREEN}firewalld is currently inactive or does not exist.${COLOR_RESET}"
-            if systemctl is-enabled --quiet firewalld ; then
-                sudo systemctl disable firewalld >/dev/null 2>&1
+            if systemctl is-enabled --quiet firewalld ; then # Check if it's enabled to run on boot
+                if sudo systemctl disable firewalld >/dev/null 2>&1; then
+                    echo -e "${COLOR_GREEN}Ensured firewalld is disabled from starting on boot.${COLOR_RESET}"
+                else
+                    echo -e "${COLOR_YELLOW}Could not disable firewalld from starting on boot, it might require manual check.${COLOR_RESET}"
+                fi
             fi
         fi
     fi
 
+    # Apply iptables rules
     if command -v iptables &>/dev/null; then
-        echo -e "${COLOR_CYAN}Detected iptables... Setting default policies to ACCEPT and flushing all rules...${COLOR_RESET}"
+        echo -e "${COLOR_CYAN}Applying new iptables rules for the INPUT chain...${COLOR_RESET}"
+
+        echo -e "${COLOR_CYAN}1. Flushing all existing rules in INPUT chain.${COLOR_RESET}"
         sudo iptables -F INPUT
-        sudo iptables -F FORWARD
-        sudo iptables -F OUTPUT
-        sudo iptables -F 
-        sudo iptables -X
-        sudo iptables -P INPUT ACCEPT
-        sudo iptables -P FORWARD ACCEPT
-        sudo iptables -P OUTPUT ACCEPT
-        echo -e "${COLOR_GREEN}iptables: Default policies set to ACCEPT, rules for all chains flushed, non-default chains deleted.${COLOR_RESET}"
-        echo -e "${COLOR_YELLOW}Note: These iptables changes may be lost on reboot unless you use 'iptables-persistent' or a similar tool to save rules.${COLOR_RESET}"
+        echo -e "${COLOR_GREEN}   INPUT chain flushed.${COLOR_RESET}"
+
+        echo -e "${COLOR_CYAN}2. Allowing all traffic on loopback interface (lo).${COLOR_RESET}"
+        sudo iptables -A INPUT -i lo -j ACCEPT
+        echo -e "${COLOR_GREEN}   Loopback traffic allowed.${COLOR_RESET}"
+
+        echo -e "${COLOR_CYAN}3. Allowing established and related connections.${COLOR_RESET}"
+        sudo iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+        echo -e "${COLOR_GREEN}   Established and related connections allowed.${COLOR_RESET}"
+
+        echo -e "${COLOR_CYAN}4. Allowing TCP traffic on port 22 (SSH).${COLOR_RESET}"
+        sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+        echo -e "${COLOR_GREEN}   TCP port 22 (SSH) allowed.${COLOR_RESET}"
+
+        echo -e "${COLOR_CYAN}5. Allowing TCP traffic on port 80 (HTTP).${COLOR_RESET}"
+        sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+        echo -e "${COLOR_GREEN}   TCP port 80 (HTTP) allowed.${COLOR_RESET}"
+
+        echo -e "${COLOR_CYAN}6. Allowing TCP traffic on port 443 (HTTPS).${COLOR_RESET}"
+        sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+        echo -e "${COLOR_GREEN}   TCP port 443 (HTTPS) allowed.${COLOR_RESET}"
+
+        echo -e "${COLOR_CYAN}7. Rejecting all other incoming traffic with 'icmp-host-prohibited'.${COLOR_RESET}"
+        sudo iptables -A INPUT -j REJECT --reject-with icmp-host-prohibited
+        echo -e "${COLOR_GREEN}   All other incoming traffic set to REJECT.${COLOR_RESET}"
+
+        echo -e "${COLOR_GREEN}iptables rules applied successfully.${COLOR_RESET}"
         firewall_action_taken=true
+
+        # Persist rules
+        echo -e "${COLOR_CYAN}Attempting to make iptables rules persistent...${COLOR_RESET}"
+        if command -v netfilter-persistent &>/dev/null; then
+            echo -e "${COLOR_YELLOW}   Found 'netfilter-persistent'. Attempting to save rules...${COLOR_RESET}"
+            if sudo netfilter-persistent save; then
+                echo -e "${COLOR_GREEN}   iptables rules saved successfully using 'netfilter-persistent save'.${COLOR_RESET}"
+            else
+                echo -e "${COLOR_RED}   'sudo netfilter-persistent save' command failed. Rules might not be persistent.${COLOR_RESET}"
+                echo -e "${COLOR_YELLOW}   You may need to run it manually or ensure 'iptables-persistent' package is correctly installed and configured.${COLOR_RESET}"
+            fi
+        elif command -v iptables-save &>/dev/null && [ -d /etc/iptables ]; then # Check for directory for common iptables-persistent setup
+             echo -e "${COLOR_YELLOW}   'netfilter-persistent' not found. Found 'iptables-save' and '/etc/iptables' directory.${COLOR_RESET}"
+             echo -e "${COLOR_YELLOW}   Attempting to save rules to /etc/iptables/rules.v4 (for 'iptables-persistent' service)...${COLOR_RESET}"
+             if sudo sh -c "iptables-save > /etc/iptables/rules.v4"; then # Use sh -c for redirection with sudo
+                echo -e "${COLOR_GREEN}   iptables rules saved to /etc/iptables/rules.v4.${COLOR_RESET}"
+                echo -e "${COLOR_YELLOW}   Ensure 'iptables-persistent' service is installed and enabled to load these rules on boot (e.g., 'sudo apt install iptables-persistent').${COLOR_RESET}"
+             else
+                echo -e "${COLOR_RED}   Failed to save rules to /etc/iptables/rules.v4. Rules might not be persistent.${COLOR_RESET}"
+             fi
+        else
+            echo -e "${COLOR_RED}   Could not find 'netfilter-persistent' or a standard method to save iptables rules automatically.${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}   To make rules persistent, please install 'iptables-persistent' (Debian/Ubuntu) or 'iptables-services' (RHEL/CentOS).${COLOR_RESET}"
+            echo -e "${COLOR_YELLOW}   Example commands after installation: 'sudo netfilter-persistent save' or 'sudo systemctl enable iptables --now && sudo iptables-save > /etc/sysconfig/iptables' (RHEL/CentOS).${COLOR_RESET}"
+        fi
+    else
+        echo -e "${COLOR_RED}iptables command not found. Cannot apply new firewall rules.${COLOR_RESET}"
+        # If no other firewall manager was touched and iptables is missing, it's a failure for this function's goal.
+        if ! $firewall_action_taken; then
+             echo -e "${COLOR_YELLOW}No firewall actions were taken. Please configure your firewall manually if needed.${COLOR_RESET}"
+             return 1 # Indicate that the primary goal (iptables config) failed
+        fi
     fi
 
-    if ! $firewall_action_taken && ! command -v ufw &>/dev/null && ! command -v firewall-cmd &>/dev/null && ! command -v iptables &>/dev/null ; then
-        echo -e "${COLOR_YELLOW}UFW, firewalld, or iptables commands not detected.${COLOR_RESET}"
-        echo -e "${COLOR_YELLOW}Please ensure your system firewall (if any) is configured to allow all traffic.${COLOR_RESET}"
-    elif $firewall_action_taken; then
-        echo -e "${COLOR_GREEN}Firewall 'allow all' configuration attempt completed.${COLOR_RESET}"
+    if $firewall_action_taken; then
+        echo -e "\n${COLOR_GREEN}Firewall configuration attempt completed.${COLOR_RESET}"
     else
-        echo -e "${COLOR_YELLOW}It seems no active firewall (UFW/firewalld inactive) was modified, and iptables commands were executed (if present).${COLOR_RESET}"
+        # This path might be taken if iptables command is not found but UFW/firewalld were also not found/active.
+        echo -e "\n${COLOR_YELLOW}No specific firewall modifications were made (iptables not found, and other managers were inactive or not present).${COLOR_RESET}"
     fi
-    
-    echo -e "${COLOR_RED}To reiterate: Server security risk has been significantly increased. Please proceed with caution.${COLOR_RESET}"
     return 0
 }
 
@@ -203,7 +264,7 @@ update_app_js_config() {
     local filepath="$1"
     local conf_name="$2"
     local conf_value="$3"
-    local sed_script_template="$4" 
+    local sed_script_template="$4"
     local original_content
     local new_content
     local sed_exit_status
@@ -352,7 +413,7 @@ fi
 if $basic_config_performed && ! $error_occurred; then # Ensure basic config was done AND no critical errors so far
     echo -e "\n${COLOR_GREEN}==================== All Configuration Operations Complete ====================${COLOR_RESET}"
     echo -e "Configuration files saved to the current directory: ${COLOR_CYAN}$current_path${COLOR_RESET}"
-    
+
     echo -e "  - $app_js_file_name"
     echo -e "  - $package_json_file_name"
     echo -e "${COLOR_GREEN}--------------------------------------------------------${COLOR_RESET}"
@@ -377,7 +438,7 @@ if $basic_config_performed && ! $error_occurred; then # Ensure basic config was 
                 echo -e "${COLOR_GREEN}PM2 installed successfully.${COLOR_RESET}"
             else
                 echo -e "${COLOR_RED}PM2 installation failed. Please check error messages and try installing manually: sudo npm install -g pm2${COLOR_RESET}"
-                pm2_error_occurred=true 
+                pm2_error_occurred=true
             fi
         else
             echo -e "${COLOR_GREEN}PM2 is already installed. Path: $(command -v pm2)${COLOR_RESET}"
@@ -388,21 +449,21 @@ if $basic_config_performed && ! $error_occurred; then # Ensure basic config was 
         fi
 
         # --- New: Install project dependencies ---
-        if ! $pm2_error_occurred; then 
+        if ! $pm2_error_occurred; then
             echo -e "${COLOR_CYAN}Current working directory: $(pwd)${COLOR_RESET}"
-            if [[ -f "$package_json_file_name" ]]; then 
+            if [[ -f "$package_json_file_name" ]]; then
                 echo -e "${COLOR_CYAN}Found $package_json_file_name, installing project dependencies (npm install)... This may take some time.${COLOR_RESET}"
                 if npm install; then
                     echo -e "${COLOR_GREEN}Project dependencies installed successfully.${COLOR_RESET}"
                 else
                     echo -e "${COLOR_RED}Project dependencies installation failed (npm install). Please check the error messages above.${COLOR_RESET}"
                     echo -e "${COLOR_RED}The application may not start correctly.${COLOR_RESET}"
-                    pm2_error_occurred=true 
+                    pm2_error_occurred=true
                 fi
             else
                 echo -e "${COLOR_RED}Error: $package_json_file_name not found in $current_path directory.${COLOR_RESET}"
                 echo -e "${COLOR_RED}Cannot install project dependencies. The application '${app_js_file_name}' will likely fail to start due to missing modules.${COLOR_RESET}"
-                pm2_error_occurred=true 
+                pm2_error_occurred=true
             fi
         fi
         # --- End: Install project dependencies ---
