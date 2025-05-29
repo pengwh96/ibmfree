@@ -28,206 +28,217 @@ echo -e "${COLOR_MAGENTA}-------------------------------------------------------
 
 # --- 读取用户输入的函数 ---
 read_input() {
-  local prompt="$1"
+  local prompt_text="$1"
   local variable_name="$2"
   local default_value="$3"
-  local advice="$4"
+  local advice_text="$4"
 
-  if [ -n "$advice" ]; then
-    echo -e "\033[36m$advice\033[0m" # 青色用于提示信息
+  if [ -n "$advice_text" ]; then
+    echo -e "\033[36m$advice_text\033[0m"
   fi
 
   if [ -n "$default_value" ]; then
-    read -p "$prompt [$default_value]: " user_input
+    read -p "$prompt_text [$default_value]: " user_input
     eval "$variable_name=\"${user_input:-$default_value}\""
   else
-    read -p "$prompt: " user_input
+    read -p "$prompt_text: " user_input
     eval "$variable_name=\"$user_input\""
   fi
   echo # 新行以提高可读性
 }
 
-# --- 交互式脚本开始 ---
-echo "---------------------------------------------------------------------"
-echo "欢迎使用交互式配置向导。"
-echo "此脚本将帮助您生成所需的环境变量并选择是否自动运行部署。"
-echo "按 Enter键可跳过可选字段或使用默认值。"
-echo "---------------------------------------------------------------------"
-echo
+# --- 初始化变量 (部分变量有默认值，可在自定义安装中修改) ---
+CUSTOM_UUID="" # 将在脚本开始时处理
+NEZHA_SERVER=""
+NEZHA_PORT=""
+NEZHA_KEY=""
+ARGO_DOMAIN=""
+ARGO_AUTH=""
+NAME="ibm" # 节点名称默认值
+CFIP=""    # 优选IP默认为空
+CFPORT=""  # 优选IP端口默认为空
+CHAT_ID=""
+BOT_TOKEN=""
+UPLOAD_URL=""
 
-# --- UUID ---
-echo -e "\033[1mUUID:\033[0m"
-echo -e "\033[36m原始脚本提到: 'export UUID=自动不输入自动生成' (不输入则自动生成)。\033[0m"
-echo -e "\033[36m对于此向导，我们假设如果您未在此处指定 UUID，主脚本将负责自动生成。\033[0m"
-read_input "如果您想指定一个 UUID (否则将由主脚本自动生成):" CUSTOM_UUID
-echo
-
-# --- 哪吒探针配置 ---
-echo -e "\033[1m--- 哪吒探针配置 (Nezha Probe Configuration) ---\033[0m"
-read -p "您想配置哪吒探针吗? (y/N): " configure_nezha
-configure_nezha=$(echo "$configure_nezha" | tr '[:upper:]' '[:lower:]')
-echo
-
-if [[ "$configure_nezha" == "y" ]]; then
-  read_input "哪吒面板域名:" NEZHA_SERVER "" "v1 填写形式：nezha.xxx.com:8008；v0 填写形式：nezha.xxx.com"
-
-  echo -e "\033[36m请确定您使用的是 v0 还是 v1 版本的哪吒面板配置。\033[0m"
-  echo -e "\033[36m- 如果您的 NEZHA_SERVER 已包含端口 (例如 nezha.xxx.com:8008), 则可能是 v1 版本，不需要单独设置 NEZHA_PORT。\033[0m"
-  echo -e "\033[36m- 如果您的 NEZHA_SERVER 仅为域名 (例如 nezha.xxx.com), 则可能是 v0 版本，需要指定 NEZHA_PORT。\033[0m"
-  read -p "您上面输入的 NEZHA_SERVER 是否已包含端口 (v1 版典型特征)? (y/N): " nezha_server_includes_port
-  nezha_server_includes_port=$(echo "$nezha_server_includes_port" | tr '[:upper:]' '[:lower:]')
-  echo
-
-  if [[ "$nezha_server_includes_port" == "y" ]]; then
-    NEZHA_PORT="" # v1, 不需要 NEZHA_PORT
-    echo -e "\033[33mNEZHA_PORT 将留空 (v1 类型配置)。\033[0m"
-  else
-    read_input "哪吒 Agent 端口 (v0 版使用):" NEZHA_PORT "" "v1 哪吒不要填写这个。v0 哪吒 Agent 端口，端口为 {443, 8443, 2096, 2087, 2083, 2053} 之一时开启 TLS"
-  fi
-
-  read_input "哪吒的 NZ_CLIENT_SECRET (v1 版) 或 Agent 密钥 (v0 版):" NEZHA_KEY
-else
-  NEZHA_SERVER=""
-  NEZHA_PORT=""
-  NEZHA_KEY=""
-  echo -e "\033[33m已跳过哪吒探针配置。\033[0m"
-fi
-echo
-
-# --- Argo 隧道配置 ---
-echo -e "\033[1m--- Argo 隧道配置 (Argo Tunnel Configuration) ---\033[0m"
-read -p "您想配置 Argo 隧道吗? (y/N): " configure_argo
-configure_argo=$(echo "$configure_argo" | tr '[:upper:]' '[:lower:]')
-echo
-
-if [[ "$configure_argo" == "y" ]]; then
-  read_input "Argo 域名 (例如 sub.yourdomain.com)。留空则启用临时隧道:" ARGO_DOMAIN "" "留空即启用临时隧道 (例如 xxx.trycloudflare.com)。"
-  if [ -n "$ARGO_DOMAIN" ]; then
-    read_input "Argo Token 或 JSON (如果您指定了 ARGO_DOMAIN 则需要):" ARGO_AUTH
-  else
-    ARGO_AUTH=""
-    echo -e "\033[33mARGO_AUTH 将留空，因为将使用临时隧道。\033[0m"
-  fi
-else
-  ARGO_DOMAIN=""
-  ARGO_AUTH=""
-  echo -e "\033[33m已跳过 Argo 隧道配置。\033[0m"
-fi
-echo
-
-# --- 其他配置 ---
-echo -e "\033[1m--- 其他配置 (Other Configurations) ---\033[0m"
-read_input "节点名称:" NAME "ibm"
-
-read -p "您想配置 Cloudflare 优选 IP/域名 (CFIP) 吗? (y/N): " configure_cfip
-configure_cfip=$(echo "$configure_cfip" | tr '[:upper:]' '[:lower:]')
-echo
-
-if [[ "$configure_cfip" == "y" ]]; then
-  read_input "优选 IP 或优选域名 (CFIP):" CFIP "www.visa.com.tw"
-  read_input "优选 IP 或优选域名对应端口 (CFPORT):" CFPORT "443"
-else
-  CFIP=""
-  CFPORT=""
-  echo -e "\033[33m已跳过优选 IP/域名配置。\033[0m"
-fi
-echo
-
-read -p "您想配置 Telegram 推送通知吗? (y/N): " configure_telegram
-configure_telegram=$(echo "$configure_telegram" | tr '[:upper:]' '[:lower:]')
-echo
-
-if [[ "$configure_telegram" == "y" ]]; then
-  read_input "Telegram Chat ID:" CHAT_ID "" "需要同时填写 Chat ID 和 Bot Token 才能推送到 Telegram。"
-  read_input "Telegram Bot Token:" BOT_TOKEN
-else
-  CHAT_ID=""
-  BOT_TOKEN=""
-  echo -e "\033[33m已跳过 Telegram 配置。\033[0m"
-fi
-echo
-
-read -p "您想配置节点自动推送到订阅器 (merge-sub) 吗? (y/N): " configure_upload
-configure_upload=$(echo "$configure_upload" | tr '[:upper:]' '[:lower:]')
-echo
-
-if [[ "$configure_upload" == "y" ]]; then
-  read_input "上传 URL (例如 https://merge.example.com):" UPLOAD_URL "" "需要填写部署 merge-sub 项目后的首页地址，例如：https://merge.eooce.ggff.net"
-else
-  UPLOAD_URL=""
-  echo -e "\033[33m已跳过上传 URL 配置。\033[0m"
-fi
-echo
-
-# --- 配置摘要 ---
-echo "---------------------------------------------------------------------"
-echo -e "\033[1m配置摘要:\033[0m"
-echo "---------------------------------------------------------------------"
-echo "UUID: \"${CUSTOM_UUID:-<将由主脚本自动生成>}\"" # Adjusted for clarity
-echo "NEZHA_SERVER: \"$NEZHA_SERVER\""
-echo "NEZHA_PORT: \"$NEZHA_PORT\""
-echo "NEZHA_KEY: \"$NEZHA_KEY\""
-echo "ARGO_DOMAIN: \"$ARGO_DOMAIN\""
-echo "ARGO_AUTH: \"$ARGO_AUTH\""
-echo "NAME: \"$NAME\""
-echo "CFIP: \"$CFIP\""
-echo "CFPORT: \"$CFPORT\""
-echo "CHAT_ID: \"$CHAT_ID\""
-echo "BOT_TOKEN: \"$BOT_TOKEN\""
-echo "UPLOAD_URL: \"$UPLOAD_URL\""
-echo "---------------------------------------------------------------------"
-echo
-
-# --- 执行部署脚本 ---
-read -p "您想使用这些配置自动运行部署脚本吗? (Y/n): " auto_execute_script
-auto_execute_script=$(echo "$auto_execute_script" | tr '[:upper:]' '[:lower:]')
-echo
-
-if [[ "$auto_execute_script" == "y" || "$auto_execute_script" == "" ]]; then
-  echo -e "\033[33m警告：接下来的步骤将从外部来源 (https://main.ssss.nyc.mn/sb.sh) 下载并执行 'sb.sh' 脚本。\033[0m"
-  echo -e "\033[33m请确保您信任此脚本来源及其内容，执行未知脚本可能存在安全风险。\033[0m"
-  read -p "确实要继续执行吗? (y/N): " final_confirmation
-  final_confirmation=$(echo "$final_confirmation" | tr '[:upper:]' '[:lower:]')
-  echo
-
-  if [[ "$final_confirmation" == "y" ]]; then
-    echo "正在导出配置并执行部署脚本..."
-
-    # 导出变量
-    if [ -n "$CUSTOM_UUID" ]; then
-      export UUID="$CUSTOM_UUID"
+# --- UUID 处理函数 ---
+handle_uuid_generation() {
+  echo -e "\033[1mUUID 配置:\033[0m"
+  read_input "请输入您要使用的 UUID (如果留空，脚本将使用 \`uuidgen\` 自动生成一个):" CUSTOM_UUID ""
+  if [ -z "$CUSTOM_UUID" ]; then
+    if command -v uuidgen &> /dev/null; then
+      CUSTOM_UUID=$(uuidgen)
+      echo -e "\033[32m已自动生成 UUID: $CUSTOM_UUID\033[0m"
     else
-      # 如果用户未提供CUSTOM_UUID，则不导出UUID，让sb.sh自行处理。
-      # 或者根据sb.sh的行为，可以 export UUID=""
-      # 为安全起见，此处选择不主动导出空UUID，依赖sb.sh的默认行为。
-      # 如果sb.sh期望一个空的UUID来触发生成，则应取消下面一行的注释：
-      # export UUID=""
-      : # 无操作，表示如果CUSTOM_UUID为空，则不导出
+      echo -e "\033[31m错误: \`uuidgen\` 命令未找到。请安装 \`uuidgen\` (通常在 util-linux 包中) 或手动提供一个 UUID。\033[0m"
+      # 在此可以选择退出脚本或再次请求输入
+      read_input "请手动输入一个 UUID:" CUSTOM_UUID ""
+      if [ -z "$CUSTOM_UUID" ]; then
+        echo -e "\033[31m未提供 UUID，脚本无法继续。\033[0m"
+        exit 1
+      fi
     fi
-    export NEZHA_SERVER="$NEZHA_SERVER"
-    export NEZHA_PORT="$NEZHA_PORT"
-    export NEZHA_KEY="$NEZHA_KEY"
-    export ARGO_DOMAIN="$ARGO_DOMAIN"
-    export ARGO_AUTH="$ARGO_AUTH"
-    export NAME="$NAME"
-    export CFIP="$CFIP"
-    export CFPORT="$CFPORT"
-    export CHAT_ID="$CHAT_ID"
-    export BOT_TOKEN="$BOT_TOKEN"
-    export UPLOAD_URL="$UPLOAD_URL"
-
-    # 执行主部署脚本
-    bash <(curl -Ls https://main.ssss.nyc.mn/sb.sh)
-
-    echo "部署脚本已尝试执行。"
   else
-    echo "自动运行已取消。"
+    echo -e "\033[32m将使用您提供的 UUID: $CUSTOM_UUID\033[0m"
   fi
-else
-  echo "自动运行已跳过。如果您想手动运行，请复制上面的配置摘要并设置环境变量后，"
-  echo "再执行: bash <(curl -Ls https://main.ssss.nyc.mn/sb.sh)"
-fi
+  echo
+}
 
+# --- 执行部署函数 ---
+run_deployment() {
+  echo "---------------------------------------------------------------------"
+  echo "配置预览:"
+  echo "  UUID: \"$CUSTOM_UUID\"" # CUSTOM_UUID 现在总会有一个值
+  echo "  NEZHA_SERVER: \"$NEZHA_SERVER\""
+  echo "  NEZHA_PORT: \"$NEZHA_PORT\""
+  echo "  NEZHA_KEY: \"$NEZHA_KEY\""
+  echo "  ARGO_DOMAIN: \"$ARGO_DOMAIN\""
+  echo "  ARGO_AUTH: \"$ARGO_AUTH\""
+  echo "  NAME: \"$NAME\""
+  echo "  CFIP: \"$CFIP\""
+  echo "  CFPORT: \"$CFPORT\""
+  echo "  CHAT_ID: \"$CHAT_ID\""
+  echo "  BOT_TOKEN: \"$BOT_TOKEN\""
+  echo "  UPLOAD_URL: \"$UPLOAD_URL\""
+  echo "---------------------------------------------------------------------"
+  echo "准备执行部署脚本 (sb.sh)..."
+  
+  export UUID="$CUSTOM_UUID"
+  export NEZHA_SERVER="$NEZHA_SERVER"
+  export NEZHA_PORT="$NEZHA_PORT"
+  export NEZHA_KEY="$NEZHA_KEY"
+  export ARGO_DOMAIN="$ARGO_DOMAIN"
+  export ARGO_AUTH="$ARGO_AUTH"
+  export NAME="$NAME"
+  export CFIP="$CFIP"
+  export CFPORT="$CFPORT"
+  export CHAT_ID="$CHAT_ID"
+  export BOT_TOKEN="$BOT_TOKEN"
+  export UPLOAD_URL="$UPLOAD_URL"
+
+  echo "开始执行: bash <(curl -Ls https://main.ssss.nyc.mn/sb.sh)"
+  bash <(curl -Ls https://main.ssss.nyc.mn/sb.sh)
+  echo "---------------------------------------------------------------------"
+  echo "部署脚本执行完毕。"
+  echo "---------------------------------------------------------------------"
+}
+
+
+# --- 主菜单 ---
 echo "---------------------------------------------------------------------"
-echo "配置向导已完成。"
+echo "部署脚本配置向导"
 echo "---------------------------------------------------------------------"
+echo "请选择安装模式:"
+echo "  1) 推荐安装 (仅需确认或自定义 UUID，其他参数默认)"
+echo "  2) 自定义安装 (手动配置各项参数)"
+echo "  Q) 退出"
+echo "---------------------------------------------------------------------"
+read -p "请输入选项 [1]: " main_choice
+main_choice=${main_choice:-1}
+
+case "$main_choice" in
+  1) # --- 推荐安装 ---
+    echo
+    echo "--- 推荐安装模式 ---"
+    echo "此模式将使用最简配置。节点名称默认为 'ibm'。"
+    
+    handle_uuid_generation # 处理 UUID
+
+    # 推荐安装的特定默认值 (大部分为空)
+    NEZHA_SERVER=""
+    NEZHA_PORT=""
+    NEZHA_KEY=""
+    ARGO_DOMAIN=""
+    ARGO_AUTH=""
+    NAME="ibm" # 节点名称保留一个默认值
+    CFIP=""
+    CFPORT=""
+    CHAT_ID=""
+    BOT_TOKEN=""
+    UPLOAD_URL=""
+    
+    run_deployment
+    ;;
+
+  2) # --- 自定义安装 ---
+    echo
+    echo "--- 自定义安装模式 ---"
+    
+    handle_uuid_generation # 处理 UUID
+
+    echo
+    read -p "是否配置哪吒探针? (y/N): " configure_section
+    if [[ "$(echo "$configure_section" | tr '[:upper:]' '[:lower:]')" == "y" ]]; then
+      read_input "哪吒面板域名:" NEZHA_SERVER "" "v1 格式: nezha.xxx.com:8008; v0 格式: nezha.xxx.com"
+      read -p "您输入的哪吒面板域名是否已包含端口 (v1版特征)? (y/N): " nezha_v1_style
+      if [[ "$(echo "$nezha_v1_style" | tr '[:upper:]' '[:lower:]')" == "y" ]]; then
+        NEZHA_PORT=""
+        echo -e "\033[36mNEZHA_PORT 将留空 (v1 类型配置)。\033[0m"
+      else
+        read_input "哪吒 Agent 端口 (v0 版使用):" NEZHA_PORT "" "v0 端口为 {443,8443,2096,2087,2083,2053} 之一时开启TLS"
+      fi
+      read_input "哪吒 NZ_CLIENT_SECRET (v1) 或 Agent 密钥 (v0):" NEZHA_KEY
+    else
+      NEZHA_SERVER=""
+      NEZHA_PORT=""
+      NEZHA_KEY=""
+    fi
+
+    echo
+    read -p "是否配置 Argo 隧道? (y/N): " configure_section
+    if [[ "$(echo "$configure_section" | tr '[:upper:]' '[:lower:]')" == "y" ]]; then
+      read_input "Argo 域名 (留空则启用临时隧道):" ARGO_DOMAIN ""
+      if [ -n "$ARGO_DOMAIN" ]; then
+        read_input "Argo Token 或 JSON:" ARGO_AUTH
+      else
+        ARGO_AUTH=""
+        echo -e "\033[36m将使用 Argo 临时隧道，无需 ARGO_AUTH。\033[0m"
+      fi
+    else
+      ARGO_DOMAIN=""
+      ARGO_AUTH=""
+    fi
+    
+    echo
+    read -p "是否进行其他配置 (节点名称, CFIP, Telegram等)? (y/N): " configure_section
+    if [[ "$(echo "$configure_section" | tr '[:upper:]' '[:lower:]')" == "y" ]]; then
+      read_input "节点名称:" NAME "${NAME}" # 使用当前的NAME作为默认值
+      read_input "优选 IP 或域名 (CFIP, 可选):" CFIP ""
+      if [ -n "$CFIP" ]; then
+          read_input "CFIP 对应端口:" CFPORT "443"
+      else
+          CFPORT=""
+      fi
+      read_input "Telegram Chat ID (可选):" CHAT_ID ""
+      if [ -n "$CHAT_ID" ]; then
+        read_input "Telegram Bot Token (可选,需与Chat ID一同填写):" BOT_TOKEN ""
+      else
+        BOT_TOKEN=""
+      fi
+      read_input "节点信息上传 URL (可选, merge-sub 地址):" UPLOAD_URL ""
+    else
+      # 如果用户跳过“其他配置”，则 NAME 等使用初始默认值或之前步骤的值
+      # NAME 仍为 "ibm" (除非前面被修改), 其他可选配置保持为空
+      CFIP="" # 确保可选的这些是空的，除非用户主动配置
+      CFPORT=""
+      CHAT_ID=""
+      BOT_TOKEN=""
+      UPLOAD_URL=""
+      echo -e "\033[36m其他可选配置将使用默认值或留空。\033[0m"
+    fi
+
+    run_deployment
+    ;;
+
+  [Qq]*)
+    echo "已退出向导。"
+    exit 0
+    ;;
+
+  *)
+    echo "无效选项，已退出。"
+    exit 1
+    ;;
+esac
+
+exit 0
