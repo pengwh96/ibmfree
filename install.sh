@@ -125,9 +125,9 @@ run_deployment() {
             echo -e "${COLOR_YELLOW}  未检测到 VMess 链接。${COLOR_RESET}"
         else
             echo -e "${COLOR_GREEN}  正在处理 VMess 配置链接...${COLOR_RESET}"
-            if! command -v jq &> /dev/null; then
+            if ! command -v jq &> /dev/null; then
                 echo -e "${COLOR_YELLOW}  警告: 'jq' 命令未找到。无法生成多个优选地址的 VMess 或 Clash 订阅。${COLOR_RESET}"
-            elif! command -v base64 &> /dev/null; then
+            elif ! command -v base64 &> /dev/null; then
                 echo -e "${COLOR_RED}  错误: 'base64' 命令未找到。${COLOR_RESET}"
             else
                 BASE64_DECODE_CMD="base64 -d"; BASE64_ENCODE_CMD="base64 -w0"
@@ -164,7 +164,7 @@ run_deployment() {
         echo
 
         if [ ${#GENERATED_VMESS_LINKS_ARRAY[@]} -gt 0 ]; then
-            if! command -v jq &> /dev/null; then
+            if ! command -v jq &> /dev/null; then
                 echo -e "${COLOR_YELLOW}  警告: 'jq' 未找到，无法生成 Clash 订阅。${COLOR_RESET}"
             else
                 echo -e "${COLOR_MAGENTA}--- Clash 订阅链接 (通过 api.wcc.best) ---${COLOR_RESET}"
