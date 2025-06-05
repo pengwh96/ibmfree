@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 初始化并导出变量
-export CUSTOM_UUID="55e8ca56-8a0a-4486-b3f9-b9b0d46638a9"
+export UUID="55e8ca56-8a0a-4486-b3f9-b9b0d46638a9"
 export ARGO_DOMAIN="vm.pwhhh.nyc.mn"
 export ARGO_AUTH="eyJhIjoiZjRhZjc4NGFkMDkzYTBlNGY1OWEwMjZlNDExN2IxNzkiLCJ0IjoiNmI1YjliYTktYTYxYS00YWI5LWEwMzctYzUyYWU2YTZkMGJmIiwicyI6Ik1EUTNOREF4TlRFdFlXRmtNaTAwT0dNNUxXRTFNalV0WXpGak0yWmtOVFZpWTJZNSJ9"
 export NAME="ibm"
@@ -45,7 +45,7 @@ print_header() {
 run_deployment() {
     print_header "开始部署流程" "${COLOR_CYAN}"
     echo -e "${COLOR_CYAN}  当前配置预览:${COLOR_RESET}"
-    echo -e "    ${COLOR_WHITE_BOLD}UUID:${COLOR_RESET} $CUSTOM_UUID"
+    echo -e "    ${COLOR_WHITE_BOLD}UUID:${COLOR_RESET} $UUID"
     echo -e "    ${COLOR_WHITE_BOLD}节点名称 (NAME):${COLOR_RESET} $NAME"
     echo -e "    ${COLOR_WHITE_BOLD}主优选IP (CFIP):${COLOR_RESET} $CFIP (端口: $CFPORT)"
     echo -e "    ${COLOR_WHITE_BOLD}优选IP列表:${COLOR_RESET} ${PREFERRED_ADD_LIST[*]}"
